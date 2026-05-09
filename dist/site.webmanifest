@@ -33,18 +33,11 @@
   "dir": "ltr",
   "screenshots": [
     {
-      "src": "/assets/screenshot-desktop.png",
+      "src": "/assets/kinetic-poster-landing-page-copy (2).png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Desktop editing interface"
-    },
-    {
-      "src": "/assets/screenshot-mobile.png", 
-      "sizes": "375x667",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Mobile timeline view"
     }
   ],
   "shortcuts": [
