@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Allow: /assets/
+Disallow: /node_modules/
+Disallow: /dist/
+Disallow: /*.map$
+Disallow: /*.hot-update.*
+
+# Allow search engines to crawl the main application
+# Block development files and build artifacts
+
+Sitemap: https://kinetic-video-editor.vercel.app/sitemap.xml
+
+# Crawl delay (optional, be nice to servers)
+Crawl-delay: 1
