@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/kinetic-open-source-video-editor/',
   build: {
     outDir: 'dist',
     sourcemap: false,
