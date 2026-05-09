@@ -1,6 +1,6 @@
 # ⚡ Kinetic: The High-Performance Open-Source Video Editor
 
-![Kinetic Logo](public/assets/kinetic-logo.png)
+![Kinetic Logo](public/assets/kinetic-logo.png){width=150}
 
 Kinetic is a browser-based, non-linear video editor (NLE) built for speed, privacy, and precision. By leveraging **FFmpeg.wasm**, Kinetic brings desktop-class processing power directly to your browser without ever uploading your data to a server.
 
