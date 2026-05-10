@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "kinetic-open-source-video-editor",
+  "outputDirectory": "dist",
+  "installCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "framework": "vite",
+  "builds": [
+    {
+      "src": "dist/index.html",
+      "use": "@vercel/static"
+    }
+  ]
+}
