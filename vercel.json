@@ -5,10 +5,16 @@
   "installCommand": "npm run build",
   "devCommand": "npm run dev",
   "framework": "vite",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "builds": [
     {
       "src": "dist/index.html",
-      "use": "@vercel/static"
+      "use": "@vercel/static",
+      "config": {
+        "base": "/kinetic-open-source-video-editor/"
+      }
     }
   ]
 }
