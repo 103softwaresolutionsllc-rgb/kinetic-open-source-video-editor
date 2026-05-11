@@ -2,6 +2,12 @@ import React, { useRef, useState, useEffect } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import Timeline from './Timeline.jsx';
 import { useFFmpeg } from '../hooks/useFFmpeg.js';
+import TimelineEngine from '../engine/timeline/TimelineEngine.js';
+import RendererEngine from '../engine/renderer/RendererEngine.js';
+import FFmpegService from '../engine/export/FFmpegService.js';
+import EffectsEngine from '../engine/effects/EffectsEngine.js';
+import CropTool from './CropTool.jsx';
+import ExportPresets from './ExportPresets.jsx';
 
 function fmt(s) {
   if (s == null || isNaN(s)) return '0:00.0';
@@ -13,11 +19,26 @@ function fmt(s) {
 export default function VideoEditor() {
   const videoRef = useRef(null);
   const wavesurferRef = useRef(null);
-  const wsReadyRef = useRef(false);
+  const wsReadyRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  // Engine instances
+  const timelineEngine = useRef(new TimelineEngine());
+  const rendererEngine = useRef(new RendererEngine());
+  const ffmpegService = useRef(new FFmpegService());
+  const effectsEngine = useRef(new EffectsEngine());
 
   const [clips, setClips] = useState([]);
   const [selectedClip, setSelectedClip] = useState(null);
   const [message, setMessage] = useState('Ready. Add a video to get started.');
+  
+  // New state for advanced features
+  const [showCropTool, setShowCropTool] = useState(false);
+  const [showExportPresets, setShowExportPresets] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [videoScale, setVideoScale] = useState(1);
+  const [videoPosition, setVideoPosition] = useState({ x: 0, y: 0 });
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const { ffmpeg, fetchFile, loaded, progress, load } = useFFmpeg();
 
