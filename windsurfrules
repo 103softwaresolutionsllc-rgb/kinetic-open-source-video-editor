@@ -1,0 +1,219 @@
+# Kinetic Video Editor — Windsurf AI Rules
+
+## Project Overview
+Kinetic is a free, open-source, browser-based video editor built with React 18,
+Vite 5, FFmpeg.wasm (@ffmpeg/ffmpeg v0.12), WaveSurfer.js v7, and Tauri v2.
+All video processing runs in the browser via WebAssembly — no server, no uploads.
+
+## Exact File Structure (never deviate from this)
+```
+kinetic-open-source-video-editor/
+├── index.html
+├── package.json
+├── vite.config.js
+├── src-tauri/          ← Tauri Rust backend (do not touch unless asked)
+├── public/
+│   ├── _headers        ← COEP/COOP headers required for SharedArrayBuffer
+│   └── assets/
+│       ├── kinetic-logo.png
+│       └── kinetic-poster-logo.png
+└── src/
+    ├── main.jsx        ← React entry, never modify unless asked
+    ├── App.jsx         ← Header, dark mode toggle, mounts VideoEditor
+    ├── styles.css      ← All global styles and CSS variables
+    ├── hooks/
+    │   └── useFFmpeg.js
+    └── components/
+        ├── VideoEditor.jsx   ← Main editor shell
+        └── Timeline.jsx      ← Horizontal timeline strip
+```
+
+## Critical Rules — Always Follow
+
+### FFmpeg
+- Always use `@ffmpeg/ffmpeg` v0.12 API: `FFmpeg` class, `ffmpeg.exec()`, `ffmpeg.writeFile()`, `ffmpeg.readFile()`
+- NEVER use the old v0.11 API: `createFFmpeg()`, `ffmpeg.run()`, `ffmpeg.FS()`
+- Always import `fetchFile` and `toBlobURL` from `@ffmpeg/util`, not from `@ffmpeg/ffmpeg`
+- FFmpeg instance lives in `src/hooks/useFFmpeg.js` as a module-level singleton — never instantiate it inside a component
+- The `vite.config.js` must always have `optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] }`
+- Both dev server and preview server must have COEP and COOP headers set
+
+### React Patterns
+- Never use `JSON.parse(JSON.stringify(...))` to copy state that contains File objects — use spread: `{ ...clip, key: value }`
+- Always read real video duration via `video.onloadedmetadata` when adding clips, never hardcode a max
+- Selected clip index state lives in `VideoEditor.jsx` as `selectedClip`
+- All FFmpeg logic stays inside `useFFmpeg.js` — VideoEditor only calls `load()`, `ffmpeg.writeFile()`, `ffmpeg.exec()`, `ffmpeg.readFile()`
+
+### Styling
+- All colors use CSS variables defined in `:root` in `styles.css` — never hardcode hex values in JSX
+- Dark mode is toggled by adding/removing the `dark` class on `document.body`
+- CSS variables: `--accent` (teal), `--accent-2` (blue), `--accent-grad`, `--surface`, `--surface-2`, `--bg`, `--text`, `--muted`, `--border`, `--danger`
+- New components get their styles added to `styles.css`, not inline or in separate CSS files
+- Use `button.danger` class for destructive actions (red), `button.secondary` for ghost buttons
+
+### Imports
+- VideoEditor imports Timeline as `import Timeline from './Timeline.jsx'`
+- VideoEditor imports useFFmpeg as `import { useFFmpeg } from '../hooks/useFFmpeg.js'`
+- App imports VideoEditor as `import VideoEditor from './components/VideoEditor.jsx'`
+- Always include `.jsx` or `.js` extensions in imports
+
+### Code Style
+- Functional components only, no class components
+- Custom hooks named `useX` and live in `src/hooks/`
+- Helper functions like `fmt(seconds)` defined at module level, not inside components
+- Prefer `async/await` over `.then()` chains
+- Always wrap FFmpeg operations in try/catch and call `setMessage()` on error
+
+---
+
+## Feature Roadmap (build in this order when asked)
+
+### Phase 1 — Timeline (Priority: HIGH)
+**Goal:** Replace the static clip list with a real interactive timeline
+
+Files to modify: `src/components/Timeline.jsx`, `src/components/VideoEditor.jsx`, `src/styles.css`
+
+Requirements:
+- Horizontal scrollable strip of clip blocks
+- Each block width is proportional to clip duration relative to total duration
+- A playhead (vertical red line) that moves as video plays
+- Clicking a position on the timeline scrubs the video to that time
+- Clips are draggable left/right to reorder (use HTML5 drag and drop, no external library)
+- Selected clip highlighted with `--accent` border
+- Playhead position synced bidirectionally: video timeupdate → move playhead, click timeline → seek video
+
+Implementation notes:
+- Timeline needs a `currentTime` prop passed from VideoEditor
+- VideoEditor passes `videoRef.current.currentTime` updated via `requestAnimationFrame`
+- Drag reorder updates the `clips` array order in VideoEditor state
+- Use a `useTimeline` hook in `src/hooks/useTimeline.js` for drag logic
+
+### Phase 2 — Clip Operations (Priority: HIGH)
+**Goal:** Give users precise control over each clip
+
+Files to modify: `src/components/VideoEditor.jsx`, `src/styles.css`
+
+Requirements:
+- **Split at playhead:** Button that splits the currently selected clip into two clips at `videoRef.current.currentTime`. The first clip keeps start→currentTime, the second keeps currentTime→end.
+- **Precise time inputs:** MM:SS number inputs next to each range slider showing exact start/end time. Editing the input updates the slider and vice versa.
+- **Clip duplication:** Button on each clip that appends a copy of it to the clips array
+- **Reorder buttons:** Up/Down arrow buttons to shift a clip's position in the array
+
+Implementation notes:
+- Split function signature: `splitClip(index, atTime)` — creates two new clip objects, removes original
+- Time input format: display as `M:SS.s`, parse back to seconds on change
+- Duplication must copy the File reference, not just the URL
+
+### Phase 3 — Transitions (Priority: MEDIUM)
+**Goal:** Add fade in/out between clips via FFmpeg filters
+
+Files to modify: `src/components/VideoEditor.jsx`, `src/hooks/useFFmpeg.js`
+
+Requirements:
+- Per-clip fade-in duration (0–2 seconds, default 0)
+- Per-clip fade-out duration (0–2 seconds, default 0)
+- Implemented via FFmpeg `fade` video filter and `afade` audio filter
+- UI: two small number inputs on each clip card labeled "Fade In" and "Fade Out"
+- Store `fadeIn` and `fadeOut` values on each clip object in state
+
+Implementation notes:
+- FFmpeg filter for fade: `-vf fade=t=in:st=0:d={fadeIn},fade=t=out:st={end-fadeOut}:d={fadeOut}`
+- Audio fade: `-af afade=t=in:st=0:d={fadeIn},afade=t=out:st={end-fadeOut}:d={fadeOut}`
+- Only apply filters if fade duration > 0 to avoid unnecessary processing
+
+### Phase 4 — Text Overlays (Priority: MEDIUM)
+**Goal:** Burn text into video using FFmpeg drawtext filter
+
+Files to create: `src/components/TextOverlayPanel.jsx`
+Files to modify: `src/components/VideoEditor.jsx`, `src/styles.css`
+
+Requirements:
+- Add text overlay panel below the preview
+- Fields: text content, font size (default 36), color (default white), position (top/center/bottom select), start time (seconds), end time (seconds)
+- Multiple overlays supported, stored as array in VideoEditor state
+- Applied to export via FFmpeg `drawtext` filter
+- Preview: render text on top of the video element using absolute positioned div (not burned in during preview, only on export)
+
+Implementation notes:
+- FFmpeg drawtext: `drawtext=text='${text}':fontsize=${size}:fontcolor=${color}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${start},${end})'`
+- Stack multiple drawtext filters with comma separation
+- Text overlay state: `{ id, text, size, color, position, startTime, endTime }`
+
+### Phase 5 — Audio Mixer (Priority: MEDIUM)
+**Goal:** Per-clip volume control and background music
+
+Files to create: `src/components/AudioMixer.jsx`
+Files to modify: `src/components/VideoEditor.jsx`, `src/hooks/useFFmpeg.js`, `src/styles.css`
+
+Requirements:
+- Volume slider (0–150%) per clip, stored on clip object as `volume` (default 1.0)
+- Mute toggle per clip
+- Separate background music track: upload an audio file, set volume, it plays under all clips
+- Background music loops if shorter than total video duration
+- Applied on export via FFmpeg `volume` filter and `amix`
+
+Implementation notes:
+- Volume filter: `-filter:a volume=${clip.volume}`
+- Background music: use `amix=inputs=2:duration=first:dropout_transition=2`
+- Mute: set volume to 0, show visual indicator on clip card
+
+### Phase 6 — Export Options (Priority: MEDIUM)
+**Goal:** Give users control over output quality and format
+
+Files to create: `src/components/ExportPanel.jsx`
+Files to modify: `src/components/VideoEditor.jsx`, `src/styles.css`
+
+Requirements:
+- Resolution select: Original, 1080p, 720p, 480p
+- Quality select: High (CRF 18), Medium (CRF 23), Low (CRF 28)
+- Format select: MP4, WebM, GIF (GIF capped at 15fps and 480p)
+- Estimated file size indicator (rough calculation based on duration × bitrate)
+- Export settings stored in a `exportSettings` state object in VideoEditor
+
+Implementation notes:
+- Scale filter for resolution: `-vf scale=-2:720` (use -2 to maintain aspect ratio)
+- WebM: use `-c:v libvpx-vp9 -c:a libopus`
+- GIF: `-vf fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`
+- CRF only applies to libx264 and libvpx-vp9, not copy mode
+
+### Phase 7 — Tauri Desktop App (Priority: HIGH when ready to ship)
+**Goal:** Package Kinetic as a downloadable desktop app
+
+Setup steps (run once in terminal, do not add to package.json scripts manually):
+```bash
+npm install @tauri-apps/cli @tauri-apps/api
+npx tauri init
+```
+
+Configuration requirements:
+- `src-tauri/tauri.conf.json`: set `productName` to "Kinetic", `identifier` to "app.kinetic.editor"
+- Window size: 1280×800 minimum, resizable
+- COEP/COOP headers must be set in Tauri's custom protocol config since the browser headers won't apply
+- FFmpeg WASM requires `dangerousDisableAssetCspModification` in Tauri CSP config
+
+Files to create: `src-tauri/` (entire directory generated by `tauri init`)
+Files to modify: `src-tauri/tauri.conf.json`, `vite.config.js` (add Tauri plugin)
+
+Build commands:
+- Dev: `npx tauri dev`
+- Build installer: `npx tauri build`
+- Output: `src-tauri/target/release/bundle/`
+
+---
+
+## What NOT to Do
+- Never install or use `@ffmpeg/core` as a local npm package — load it from the unpkg CDN via `toBlobURL`
+- Never add a backend server — this is a purely client-side app
+- Never use `localStorage` or `sessionStorage` — use React state
+- Never create separate CSS files per component — all styles go in `styles.css`
+- Never use class components or `React.Component`
+- Never call `ffmpeg.load()` more than once — the `useFFmpeg` hook guards this with `loadingRef`
+- Never store File objects in JSON — always keep them as references in React state
+- Never hardcode video duration as 30 — always read from `video.onloadedmetadata`
+
+## When Adding a New Feature
+1. Add styles to `src/styles.css` first, using existing CSS variables
+2. If logic is reusable, create a hook in `src/hooks/`
+3. If UI is a distinct panel, create a component in `src/components/`
+4. Wire it into `VideoEditor.jsx` last
+5. Test that Export MP4 still works after every change

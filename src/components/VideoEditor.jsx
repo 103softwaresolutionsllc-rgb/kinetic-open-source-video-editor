@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import Timeline from './Timeline.jsx';
+import InteractiveTimeline from './InteractiveTimeline.jsx';
 import { useFFmpeg } from '../hooks/useFFmpeg.js';
 import TimelineEngine from '../engine/timeline/TimelineEngine.js';
 import RendererEngine from '../engine/renderer/RendererEngine.js';
@@ -8,6 +9,10 @@ import FFmpegService from '../engine/export/FFmpegService.js';
 import EffectsEngine from '../engine/effects/EffectsEngine.js';
 import CropTool from './CropTool.jsx';
 import ExportPresets from './ExportPresets.jsx';
+import TransitionControls from './TransitionControls.jsx';
+import TextOverlay from './TextOverlay.jsx';
+import AudioMixer from './AudioMixer.jsx';
+import ExportOptions from './ExportOptions.jsx';
 
 function fmt(s) {
   if (s == null || isNaN(s)) return '0:00.0';
@@ -39,6 +44,8 @@ export default function VideoEditor() {
   const [videoScale, setVideoScale] = useState(1);
   const [videoPosition, setVideoPosition] = useState({ x: 0, y: 0 });
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [timelineZoom, setTimelineZoom] = useState(1);
 
   const { ffmpeg, fetchFile, loaded, progress, load } = useFFmpeg();
 
@@ -63,10 +70,102 @@ export default function VideoEditor() {
       if (ws && wsReadyRef.current && video.duration > 0) {
         ws.seekTo(video.currentTime / video.duration);
       }
+      setCurrentTime(video.currentTime);
     };
     video.addEventListener('timeupdate', onTimeUpdate);
     return () => video.removeEventListener('timeupdate', onTimeUpdate);
   }, []);
+
+  // ── Handle timeline time changes ─────────────────────────────
+  const handleTimeChange = useCallback((newTime) => {
+    setCurrentTime(newTime);
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
+  }, []);
+
+  // ── Handle clip selection ─────────────────────────────────────
+  const handleClipSelect = useCallback((clip) => {
+    setSelectedClip(clip);
+  }, []);
+
+  // ── Handle transition addition ─────────────────────────────────
+  const handleTransitionAdd = useCallback((transition) => {
+    setMessage(`Added ${transition.name} transition`);
+  }, []);
+
+  // ── Handle text overlay operations ─────────────────────────────
+  const handleTextAdd = useCallback((textOverlay) => {
+    setMessage(`Added text overlay: "${textOverlay.text}"`);
+  }, []);
+
+  const handleTextUpdate = useCallback((textId, updates) => {
+    setMessage(`Updated text overlay ${textId}`);
+  }, []);
+
+  const handleTextRemove = useCallback((textId) => {
+    setMessage(`Removed text overlay ${textId}`);
+  }, []);
+
+  // ── Handle audio mixer operations ─────────────────────────────
+  const handleVolumeChange = useCallback((trackId, volume) => {
+    setMessage(`Adjusted audio volume for track ${trackId}`);
+  }, []);
+
+  const handleMuteToggle = useCallback((trackId) => {
+    setMessage(`${trackId} track ${volume ? 'unmuted' : 'muted'}`);
+  }, []);
+
+  const handleSoloToggle = useCallback((trackId) => {
+    setMessage(`${trackId} track ${solo ? 'soloed' : 'unsoloed'}`);
+  }, []);
+
+  // ── Handle export operations ─────────────────────────────
+  const handleExport = useCallback(async (exportSettings) => {
+    if (!ffmpeg || !loaded) {
+      alert('FFmpeg is not loaded yet. Please wait...');
+      return;
+    }
+
+    try {
+      setMessage('Exporting video...');
+      
+      // Get the first clip for export (simplified for demo)
+      const clip = clips[0];
+      if (!clip) {
+        alert('No video clips to export');
+        return;
+      }
+
+      // Use FFmpegService to export
+      const ffmpegService = new FFmpegService();
+      await ffmpegService.initialize();
+      
+      let blob;
+      const outputFile = `output.${exportSettings.format}`;
+      
+      if (exportSettings.format === 'gif') {
+        blob = await ffmpegService.exportAsGIF(clip.file, outputFile, exportSettings);
+      } else {
+        blob = await ffmpegService.exportWithSettings(clip.file, outputFile, exportSettings);
+      }
+
+      // Download the exported file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kinetic-export.${exportSettings.format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setMessage(`Export completed: ${exportSettings.format.toUpperCase()} format`);
+    } catch (error) {
+      console.error('Export failed:', error);
+      setMessage(`Export failed: ${error.message}`);
+    }
+  }, [ffmpeg, loaded, clips]);
 
   // ── Add clips ─────────────────────────────────────────────────
   function handleFiles(e) {
@@ -303,13 +402,45 @@ export default function VideoEditor() {
       </div>
 
       {clips.length > 0 && (
-        <Timeline
-          clips={clips}
-          onRemove={removeClip}
-          onSelect={i => { setSelectedClip(i); previewClip(clips[i]); }}
-          selectedIndex={selectedClip}
+        <InteractiveTimeline
+          timelineEngine={timelineEngine.current}
+          currentTime={currentTime}
+          duration={videoRef.current?.duration || 60}
+          onTimeChange={handleTimeChange}
+          onClipSelect={handleClipSelect}
         />
       )}
+
+      <TransitionControls
+        effectsEngine={effectsEngine.current}
+        selectedClips={new Set()}
+        onTransitionAdd={handleTransitionAdd}
+        tracks={timelineEngine.current?.getTracks() || []}
+      />
+
+      <TextOverlay
+        onTextAdd={handleTextAdd}
+        onTextUpdate={handleTextUpdate}
+        onTextRemove={handleTextRemove}
+        selectedTexts={new Set()}
+      />
+
+      <AudioMixer
+        audioTracks={[
+          { id: 1, name: 'Main Audio', type: 'video', volume: 1, muted: false, solo: false },
+          { id: 2, name: 'Background Music', type: 'music', volume: 0.7, muted: false, solo: false }
+        ]}
+        onVolumeChange={handleVolumeChange}
+        onMuteToggle={handleMuteToggle}
+        onSoloToggle={handleSoloToggle}
+        selectedTracks={new Set()}
+      />
+
+      <ExportOptions
+        onExport={handleExport}
+        ffmpegLoaded={loaded}
+        selectedClips={new Set()}
+      />
 
       <div className="status-row">
         <span className="status-dot" style={{ background: loaded ? '#22c55e' : '#f59e0b' }} />

@@ -410,6 +410,179 @@ class EffectsEngine {
     this.effects = data.effects || [];
   }
 
+  // Add transition between two clips
+  addTransition(fromClipId, toClipId, type = 'dissolve', duration = 1.0) {
+    const transition = {
+      id: Date.now(),
+      type: 'transition',
+      transitionType: type,
+      fromClipId,
+      toClipId,
+      duration,
+      startTime: null, // Will be calculated during render
+      endTime: null, // Will be calculated during render
+      enabled: true,
+      name: `${type} transition`
+    };
+
+    this.effects.push(transition);
+    return transition;
+  }
+
+  // Remove transition
+  removeTransition(transitionId) {
+    this.effects = this.effects.filter(effect => effect.id !== transitionId);
+  }
+
+  // Get transitions
+  getTransitions() {
+    return this.effects.filter(effect => effect.type === 'transition');
+  }
+
+  // Apply transition during render
+  applyTransition(context, fromClip, toClip, transition, currentTime) {
+    const { transitionType, duration } = transition;
+    const progress = this.calculateTransitionProgress(transition, currentTime);
+    
+    switch (transitionType) {
+      case 'fade':
+        this.applyFadeTransition(context, fromClip, toClip, progress);
+        break;
+      case 'dissolve':
+        this.applyDissolveTransition(context, fromClip, toClip, progress);
+        break;
+      case 'wipe':
+        this.applyWipeTransition(context, fromClip, toClip, progress);
+        break;
+      case 'slide':
+        this.applySlideTransition(context, fromClip, toClip, progress);
+        break;
+      default:
+        console.warn(`Unknown transition type: ${transitionType}`);
+    }
+  }
+
+  // Calculate transition progress
+  calculateTransitionProgress(transition, currentTime) {
+    if (!transition.startTime || !transition.endTime) return 0;
+    
+    const transitionStart = transition.startTime;
+    const transitionEnd = transition.endTime;
+    const transitionDuration = transitionEnd - transitionStart;
+    
+    if (currentTime <= transitionStart) return 0;
+    if (currentTime >= transitionEnd) return 1;
+    
+    return (currentTime - transitionStart) / transitionDuration;
+  }
+
+  // Fade transition
+  applyFadeTransition(context, fromClip, toClip, progress) {
+    const { width, height } = context.canvas;
+    
+    // Simple crossfade
+    context.globalAlpha = 1 - progress;
+    
+    if (progress < 0.5) {
+      // Fade out from clip
+      context.globalAlpha = 1 - (progress * 2);
+      this.drawClip(context, fromClip);
+    } else {
+      // Fade in to clip
+      context.globalAlpha = (progress - 0.5) * 2;
+      this.drawClip(context, toClip);
+    }
+    
+    context.globalAlpha = 1;
+  }
+
+  // Dissolve transition
+  applyDissolveTransition(context, fromClip, toClip, progress) {
+    const { width, height } = context.canvas;
+    
+    // Create dissolve effect by adjusting alpha
+    context.globalAlpha = 1;
+    
+    // Draw from clip with decreasing alpha
+    context.globalAlpha = 1 - progress;
+    this.drawClip(context, fromClip);
+    
+    // Draw to clip with increasing alpha
+    context.save();
+    context.globalCompositeOperation = 'source-over';
+    context.globalAlpha = progress;
+    this.drawClip(context, toClip);
+    context.restore();
+    
+    context.globalAlpha = 1;
+  }
+
+  // Wipe transition
+  applyWipeTransition(context, fromClip, toClip, progress) {
+    const { width, height } = context.canvas;
+    
+    // Simple left-to-right wipe
+    context.save();
+    
+    // Draw from clip
+    context.globalAlpha = 1;
+    this.drawClip(context, fromClip);
+    
+    // Create wipe mask
+    context.globalCompositeOperation = 'destination-in';
+    const wipeX = width * progress;
+    
+    // Draw wipe rectangle
+    context.fillStyle = 'black';
+    context.fillRect(0, 0, wipeX, height);
+    
+    // Draw to clip through mask
+    context.globalCompositeOperation = 'source-atop';
+    this.drawClip(context, toClip);
+    
+    context.restore();
+  }
+
+  // Slide transition
+  applySlideTransition(context, fromClip, toClip, progress) {
+    const { width, height } = context.canvas;
+    
+    // Slide from right to left
+    const slideOffset = width * (1 - progress);
+    
+    context.save();
+    
+    // Draw from clip sliding out
+    context.globalAlpha = 1;
+    this.drawClip(context, fromClip);
+    
+    // Draw to clip sliding in
+    context.globalAlpha = 1;
+    this.drawClip(context, toClip, slideOffset, 0);
+    
+    context.restore();
+  }
+
+  // Helper method to draw clip
+  drawClip(context, clip, offsetX = 0, offsetY = 0) {
+    // This would be implemented with actual clip data
+    // For now, draw placeholder
+    const { width, height } = context.canvas;
+    
+    context.fillStyle = 'rgba(191, 0, 255, 0.3)';
+    context.fillRect(offsetX, offsetY, width, height);
+    
+    context.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    context.font = '14px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(
+      clip?.name || 'Clip',
+      offsetX + width / 2,
+      offsetY + height / 2
+    );
+  }
+
   // Clone effect
   cloneEffect(effectId) {
     const original = this.getEffect(effectId);
