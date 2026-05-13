@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { TimelineProvider } from './contexts/TimelineContext.jsx';
 import VideoEditor from './components/VideoEditor.jsx';
 import SettingsWheel from './components/SettingsWheel.jsx';
