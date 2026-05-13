@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import Timeline from './Timeline.jsx';
 import InteractiveTimeline from './InteractiveTimeline.jsx';
