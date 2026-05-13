@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useTimeline } from '../hooks/useTimeline.js';
 
 function fmt(s) {
   if (s == null || isNaN(s)) return '0:00';
@@ -7,29 +8,34 @@ function fmt(s) {
   return `${m}:${sec}`;
 }
 
-export default function Timeline({ clips, onRemove, onSelect, selectedIndex }) {
-  const totalDur = clips.reduce((sum, c) => sum + ((c.end ?? c.duration ?? 0) - (c.start || 0)), 0);
-  const [isDragOver, setIsDragOver] = React.useState(false);
+export default function Timeline({ clips, onSeek, onClipSelect, onClipReorder, currentTime, duration }) {
+  const {
+    timelineRef,
+    playheadRef,
+    handlePlayheadMouseDown,
+    handleTimelineClick,
+    handleClipSelect: internalClipSelect,
+    updateTime,
+    zoom,
+    setZoom,
+    isDragging,
+    totalDuration,
+    pixelsPerSecond,
+    timelineWidth,
+    playheadPosition,
+    selectedClip,
+    clips: processedClips
+  } = useTimeline({ clips, duration, onSeek });
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
+  // Update timeline when external currentTime changes
+  React.useEffect(() => {
+    updateTime(currentTime);
+  }, [currentTime, updateTime]);
 
-  const handleDragLeave = () => {
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    // Handle file drop logic here
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
-    if (files.length > 0) {
-      // Trigger file handling
-      const event = { target: { files } };
-      // Pass to parent component
-    }
+  // Handle clip selection
+  const handleClipClick = (index) => {
+    internalClipSelect(index);
+    if (onClipSelect) onClipSelect(index);
   };
 
   return (
@@ -37,58 +43,91 @@ export default function Timeline({ clips, onRemove, onSelect, selectedIndex }) {
       <div className="timeline-label">
         <span>Timeline</span>
         <span style={{ fontSize: '0.7rem', color: 'var(--accent-2)', fontWeight: '400' }}>
-          {clips.length > 0 && `${clips.length} clip${clips.length !== 1 ? 's' : ''} • ${fmt(totalDur)}`}
+          {clips.length > 0 && `${clips.length} clip${clips.length !== 1 ? 's' : ''} • ${fmt(totalDuration)}`}
         </span>
+        <div className="timeline-zoom-controls">
+          <button 
+            className="zoom-btn"
+            onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}
+            disabled={zoom <= 0.5}
+          >
+            −
+          </button>
+          <span className="zoom-label">{Math.round(zoom * 100)}%</span>
+          <button 
+            className="zoom-btn"
+            onClick={() => setZoom(Math.min(3, zoom + 0.25))}
+            disabled={zoom >= 3}
+          >
+            +
+          </button>
+        </div>
       </div>
-      <div 
-        className={`timeline ${clips.length === 0 ? 'drop-zone' : ''} ${isDragOver ? 'drag-over' : ''}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {clips.length === 0 ? (
-          <div className="timeline-empty">
-            📹 Drag videos here or use "Add Videos" from the Project menu
-          </div>
-        ) : (
-          <>
-            {/* Interactive playhead */}
-            {selectedIndex !== null && (
-              <div 
+      
+      <div className="timeline-container">
+        <div 
+          ref={timelineRef}
+          className={`timeline ${clips.length === 0 ? 'timeline-empty' : ''} ${isDragging ? 'dragging' : ''}`}
+          onClick={handleTimelineClick}
+          style={{ width: `${Math.max(timelineWidth, 800)}px` }}
+        >
+          {clips.length === 0 ? (
+            <div className="timeline-empty-message">
+              📹 Add videos to start editing
+            </div>
+          ) : (
+            <>
+              {/* Playhead */}
+              <div
+                ref={playheadRef}
                 className="timeline-playhead"
-                style={{ 
-                  left: `${clips.slice(0, selectedIndex).reduce((sum, c) => {
-                    return sum + ((c.end ?? c.duration ?? 0) - (c.start || 0));
-                  }, 0) / totalDur * 100}%` 
-                }}
-              />
-            )}
-            
-            {clips.map((clip, index) => {
-              const clipDur = (clip.end ?? clip.duration ?? 0) - (clip.start || 0);
-              const widthPct = totalDur > 0 ? (clipDur / totalDur) * 100 : 100 / clips.length;
-
-              return (
+                style={{ left: `${playheadPosition}px` }}
+                onMouseDown={handlePlayheadMouseDown}
+              >
+                <div className="playhead-line"></div>
+                <div className="playhead-handle"></div>
+              </div>
+              
+              {/* Time ruler */}
+              <div className="timeline-ruler">
+                {Array.from({ length: Math.ceil(totalDuration / 5) + 1 }, (_, i) => {
+                  const time = i * 5;
+                  const position = time * pixelsPerSecond;
+                  return (
+                    <div
+                      key={i}
+                      className="ruler-mark"
+                      style={{ left: `${position}px` }}
+                    >
+                      <div className="ruler-tick"></div>
+                      <div className="ruler-label">{fmt(time)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Clips */}
+              {processedClips.map((clip) => (
                 <div
-                  key={index}
-                  className={`timeline-item${selectedIndex === index ? ' active' : ''}`}
-                  style={{ width: `max(80px, ${widthPct}%)` }}
-                  onClick={() => onSelect(index)}
-                  title={`${clip.name} — ${fmt(clip.start)} → ${fmt(clip.end ?? clip.duration)}`}
+                  key={clip.index}
+                  className={`timeline-clip ${selectedClip === clip.index ? 'selected' : ''}`}
+                  style={{
+                    left: `${clip.startTime * pixelsPerSecond}px`,
+                    width: `${clip.duration * pixelsPerSecond}px`
+                  }}
+                  onClick={() => handleClipClick(clip.index)}
+                  draggable
                 >
-                  <div className="timeline-item-name">{clip.name}</div>
-                  <div className="timeline-item-time">{fmt(clip.start)} – {fmt(clip.end ?? clip.duration)}</div>
-                  <div className="timeline-item-dur">{fmt(clipDur)}</div>
-                  <button
-                    className="timeline-remove"
-                    onClick={e => { e.stopPropagation(); onRemove(index); }}
-                    title="Remove clip"
-                  >✕</button>
+                  <div className="clip-content">
+                    <div className="clip-name">{clip.name}</div>
+                    <div className="clip-duration">{fmt(clip.duration)}</div>
+                  </div>
+                  <div className="clip-border"></div>
                 </div>
-              );
-            })}
-          </>
-        )}
+              ))}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

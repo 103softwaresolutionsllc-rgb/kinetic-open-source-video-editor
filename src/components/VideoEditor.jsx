@@ -1,18 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import Timeline from './Timeline.jsx';
-import InteractiveTimeline from './InteractiveTimeline.jsx';
 import { useFFmpeg } from '../hooks/useFFmpeg.js';
-import TimelineEngine from '../engine/timeline/TimelineEngine.js';
-import RendererEngine from '../engine/renderer/RendererEngine.js';
 import FFmpegService from '../engine/export/FFmpegService.js';
-import EffectsEngine from '../engine/effects/EffectsEngine.js';
-import CropTool from './CropTool.jsx';
-import ExportPresets from './ExportPresets.jsx';
-import TransitionControls from './TransitionControls.jsx';
-import TextOverlay from './TextOverlay.jsx';
-import AudioMixer from './AudioMixer.jsx';
-import ExportOptions from './ExportOptions.jsx';
 
 function fmt(s) {
   if (s == null || isNaN(s)) return '0:00.0';
@@ -25,27 +15,12 @@ export default function VideoEditor() {
   const videoRef = useRef(null);
   const wavesurferRef = useRef(null);
   const wsReadyRef = useRef(null);
-  const canvasRef = useRef(null);
-
-  // Engine instances
-  const timelineEngine = useRef(new TimelineEngine());
-  const rendererEngine = useRef(new RendererEngine());
-  const ffmpegService = useRef(new FFmpegService());
-  const effectsEngine = useRef(new EffectsEngine());
 
   const [clips, setClips] = useState([]);
   const [selectedClip, setSelectedClip] = useState(null);
   const [message, setMessage] = useState('Ready. Add a video to get started.');
-  
-  // New state for advanced features
-  const [showCropTool, setShowCropTool] = useState(false);
-  const [showExportPresets, setShowExportPresets] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [videoScale, setVideoScale] = useState(1);
-  const [videoPosition, setVideoPosition] = useState({ x: 0, y: 0 });
-  const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [timelineZoom, setTimelineZoom] = useState(1);
+  const [duration, setDuration] = useState(0);
 
   const { ffmpeg, fetchFile, loaded, progress, load } = useFFmpeg();
 
@@ -65,6 +40,7 @@ export default function VideoEditor() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    
     const onTimeUpdate = () => {
       const ws = wavesurferRef.current;
       if (ws && wsReadyRef.current && video.duration > 0) {
@@ -72,12 +48,22 @@ export default function VideoEditor() {
       }
       setCurrentTime(video.currentTime);
     };
+    
+    const onLoadedMetadata = () => {
+      setDuration(video.duration);
+    };
+    
     video.addEventListener('timeupdate', onTimeUpdate);
-    return () => video.removeEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    
+    return () => {
+      video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+    };
   }, []);
 
-  // ── Handle timeline time changes ─────────────────────────────
-  const handleTimeChange = useCallback((newTime) => {
+  // ── Handle timeline seek ─────────────────────────────────────
+  const handleTimelineSeek = useCallback((newTime) => {
     setCurrentTime(newTime);
     if (videoRef.current) {
       videoRef.current.currentTime = newTime;
@@ -85,8 +71,8 @@ export default function VideoEditor() {
   }, []);
 
   // ── Handle clip selection ─────────────────────────────────────
-  const handleClipSelect = useCallback((clip) => {
-    setSelectedClip(clip);
+  const handleClipSelect = useCallback((clipIndex) => {
+    setSelectedClip(clipIndex);
   }, []);
 
   // ── Handle transition addition ─────────────────────────────────
@@ -402,46 +388,16 @@ export default function VideoEditor() {
       </div>
 
       {clips.length > 0 && (
-        <InteractiveTimeline
-          timelineEngine={timelineEngine.current}
+        <Timeline
+          clips={clips}
           currentTime={currentTime}
-          duration={videoRef.current?.duration || 60}
-          onTimeChange={handleTimeChange}
+          duration={duration}
+          onSeek={handleTimelineSeek}
           onClipSelect={handleClipSelect}
         />
       )}
 
-      <TransitionControls
-        effectsEngine={effectsEngine.current}
-        selectedClips={new Set()}
-        onTransitionAdd={handleTransitionAdd}
-        tracks={timelineEngine.current?.getTracks() || []}
-      />
-
-      <TextOverlay
-        onTextAdd={handleTextAdd}
-        onTextUpdate={handleTextUpdate}
-        onTextRemove={handleTextRemove}
-        selectedTexts={new Set()}
-      />
-
-      <AudioMixer
-        audioTracks={[
-          { id: 1, name: 'Main Audio', type: 'video', volume: 1, muted: false, solo: false },
-          { id: 2, name: 'Background Music', type: 'music', volume: 0.7, muted: false, solo: false }
-        ]}
-        onVolumeChange={handleVolumeChange}
-        onMuteToggle={handleMuteToggle}
-        onSoloToggle={handleSoloToggle}
-        selectedTracks={new Set()}
-      />
-
-      <ExportOptions
-        onExport={handleExport}
-        ffmpegLoaded={loaded}
-        selectedClips={new Set()}
-      />
-
+      
       <div className="status-row">
         <span className="status-dot" style={{ background: loaded ? '#22c55e' : '#f59e0b' }} />
         <strong>Status:</strong>&nbsp;{message}
