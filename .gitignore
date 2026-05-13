@@ -1,2 +1,21 @@
-.vercel
+# Dependencies
+node_modules/
+node_modules/.vite/
+
+# Build outputs
+dist/
+build/
+
+# Environment
 .env*.local
+
+# Vercel
+.vercel
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
