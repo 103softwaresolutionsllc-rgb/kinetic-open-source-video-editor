@@ -1,28 +1,34 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { clipTrimmedDuration, makeClipDragId } from '../utils/clipTimeline.js';
 
 function formatTime(seconds) {
   if (seconds == null || isNaN(seconds)) return '0:00';
   const minutes = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+  const secs = Math.floor(seconds % 60)
+    .toString()
+    .padStart(2, '0');
   return `${minutes}:${secs}`;
 }
 
-export default function TimelineClip({ 
-  clip, 
-  totalDuration, 
-  isSelected, 
-  onSelect 
+export default function TimelineClip({
+  clip,
+  layerId,
+  totalDuration,
+  isSelected,
+  onSelect,
 }) {
+  const dragId = makeClipDragId(layerId, clip.id);
+
   const {
     attributes,
     listeners,
     setNodeRef,
     transform,
     transition,
-    isDragging
-  } = useSortable({ id: `${clip.layerId || 'layer'}-${clip.id}` });
+    isDragging,
+  } = useSortable({ id: dragId });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -30,13 +36,13 @@ export default function TimelineClip({
     opacity: isDragging ? 0.8 : 1,
   };
 
-  // Calculate clip width and position
-  const clipStart = clip.start || 0;
-  const clipDuration = clip.duration || 10;
-  const clipEnd = clip.end || clipStart + clipDuration;
-  
-  const leftPosition = (clipStart / totalDuration) * 100;
-  const clipWidth = ((clipEnd - clipStart) / totalDuration) * 100;
+  const timelineStart = clip.timelineStart ?? 0;
+  const trimmed = clipTrimmedDuration(clip);
+  const timelineEnd = timelineStart + trimmed;
+
+  const leftPosition = totalDuration > 0 ? (timelineStart / totalDuration) * 100 : 0;
+  const clipWidth =
+    totalDuration > 0 ? (trimmed / totalDuration) * 100 : 10;
 
   return (
     <div
@@ -47,8 +53,8 @@ export default function TimelineClip({
       style={{
         ...style,
         left: `${leftPosition}%`,
-        width: `${clipWidth}%`,
-        minWidth: '40px' // Minimum width for visibility
+        width: `${Math.max(clipWidth, 2)}%`,
+        minWidth: '40px',
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -64,42 +70,17 @@ export default function TimelineClip({
             {clip.name || 'Untitled Clip'}
           </span>
         </div>
-        
+
         <div className="clip-info">
           <span className="clip-timing">
-            {formatTime(clipStart)} - {formatTime(clipEnd)}
+            {formatTime(timelineStart)} – {formatTime(timelineEnd)}
           </span>
-          <span className="clip-duration">
-            {formatTime(clipDuration)}
-          </span>
+          <span className="clip-duration">{formatTime(trimmed)}</span>
         </div>
-        
-        {/* Visual waveform for audio clips */}
-        {clip.type === 'audio' && clip.waveform && (
-          <div className="audio-waveform">
-            {clip.waveform.map((peak, index) => (
-              <div
-                key={index}
-                className="waveform-bar"
-                style={{ height: `${peak * 100}%` }}
-              />
-            ))}
-          </div>
-        )}
-        
-        {/* Thumbnail for video clips */}
-        {clip.type === 'video' && clip.thumbnail && (
-          <div className="video-thumbnail">
-            <img src={clip.thumbnail} alt={clip.name} />
-          </div>
-        )}
       </div>
-      
-      {/* Resize handles */}
+
       <div className="resize-handle left" />
       <div className="resize-handle right" />
-      
-      {/* Selection indicator */}
       {isSelected && <div className="selection-indicator" />}
     </div>
   );

@@ -1,128 +1,175 @@
-import React, { useState, useRef } from 'react';
-import { 
-  DndContext, 
+import React, { useState, useRef, useMemo } from 'react';
+import {
+  DndContext,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  DragOverlay
+  DragOverlay,
 } from '@dnd-kit/core';
-import { 
-  arrayMove, 
-  SortableContext, 
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy 
-} from '@dnd-kit/sortable';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useTimeline } from '../contexts/TimelineContext.jsx';
 import TimelineLayer from './TimelineLayer.jsx';
 import TimelinePlayhead from './TimelinePlayhead.jsx';
+import {
+  clipTrimmedDuration,
+  projectDuration,
+  parseClipDragId,
+  VIDEO_LAYER_ID,
+} from '../utils/clipTimeline.js';
 
 function formatTime(seconds) {
   if (seconds == null || isNaN(seconds)) return '0:00';
   const minutes = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+  const secs = Math.floor(seconds % 60)
+    .toString()
+    .padStart(2, '0');
   return `${minutes}:${secs}`;
 }
 
-export default function MultiLayerTimeline() {
+export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle }) {
   const {
     layers,
     currentTime,
-    duration,
     selectedClip,
     selectedLayer,
     isPlaying,
     setCurrentTime,
     selectClip,
-    setPlaying
+    setPlaying,
+    moveClip,
+    reorderClips,
+    repositionClip,
+    addLayer,
   } = useTimeline();
 
   const [draggedClip, setDraggedClip] = useState(null);
   const timelineRef = useRef(null);
+  const trackRef = useRef(null);
 
-  // Set up drag and drop sensors
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  const totalDuration = useMemo(
+    () => Math.max(projectDuration(layers), 60),
+    [layers]
+  );
+
+  const trackWidth = trackRef.current?.clientWidth ?? 800;
+  const pixelsPerSecond = trackWidth / totalDuration;
+
   const handleDragStart = (event) => {
-    const { active } = event;
-    const [layerId, clipId] = active.id.split('-');
-    const layer = layers.find(l => l.id === layerId);
-    const clip = layer?.clips.find(c => c.id === clipId);
-    
+    const parsed = parseClipDragId(event.active.id);
+    if (!parsed) return;
+
+    const layer = layers.find((l) => l.id === parsed.layerId);
+    const clip = layer?.clips.find((c) => c.id === parsed.clipId);
+
     if (clip) {
-      setDraggedClip({ ...clip, layerId, clipId });
+      setDraggedClip({ ...clip, layerId: parsed.layerId });
     }
   };
 
   const handleDragEnd = (event) => {
-    const { active, over } = event;
-    
-    if (!over) {
+    const { active, over, delta } = event;
+    const activeParsed = parseClipDragId(active.id);
+
+    if (!activeParsed) {
       setDraggedClip(null);
       return;
     }
 
-    const [fromLayerId, fromClipId] = active.id.split('-');
-    const [toLayerId] = over.id.split('-');
-    
-    if (fromLayerId !== toLayerId) {
-      // Calculate new position based on drop location
-      const rect = over.rect;
-      const timelineRect = timelineRef.current?.getBoundingClientRect();
-      
-      if (timelineRect) {
-        const relativeX = rect.left - timelineRect.left;
-        const pixelsPerSecond = timelineRect.width / duration;
-        const newStartTime = relativeX / pixelsPerSecond;
-        
-        // Move clip between layers
-        const fromLayer = layers.find(l => l.id === fromLayerId);
-        const clip = fromLayer?.clips.find(c => c.id === fromClipId);
-        
-        if (clip) {
-          // This would be handled by the context
-          console.log('Moving clip:', { fromLayerId, toLayerId, clipId: fromClipId, newStartTime });
+    const { layerId: fromLayerId, clipId } = activeParsed;
+    const fromLayer = layers.find((l) => l.id === fromLayerId);
+    const clip = fromLayer?.clips.find((c) => c.id === clipId);
+
+    if (
+      clip &&
+      fromLayerId !== VIDEO_LAYER_ID &&
+      Math.abs(delta.x) > 4 &&
+      pixelsPerSecond > 0
+    ) {
+      const newStart = Math.max(
+        0,
+        (clip.timelineStart ?? 0) + delta.x / pixelsPerSecond
+      );
+      repositionClip(fromLayerId, clipId, newStart);
+    }
+
+    if (over && active.id !== over.id) {
+      const overParsed = parseClipDragId(over.id);
+
+      if (overParsed && clip) {
+        const { layerId: toLayerId, clipId: overClipId } = overParsed;
+
+        if (fromLayerId === toLayerId && fromLayerId === VIDEO_LAYER_ID) {
+          const sorted = [...fromLayer.clips].sort(
+            (a, b) => (a.timelineStart ?? 0) - (b.timelineStart ?? 0)
+          );
+          const fromIndex = sorted.findIndex((c) => c.id === clipId);
+          const toIndex = sorted.findIndex((c) => c.id === overClipId);
+
+          if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+            reorderClips(fromLayerId, fromIndex, toIndex);
+          }
+        } else if (fromLayerId !== toLayerId) {
+          const rect = timelineRef.current?.getBoundingClientRect();
+          if (rect) {
+            const newStartTime = Math.max(
+              0,
+              (clip.timelineStart ?? 0) + delta.x / pixelsPerSecond
+            );
+            moveClip(fromLayerId, toLayerId, clipId, newStartTime);
+          }
         }
       }
     }
-    
+
     setDraggedClip(null);
   };
 
   const handleTimelineClick = (e) => {
+    if (e.target.closest('.timeline-clip')) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pixelsPerSecond = rect.width / duration;
-    const newTime = x / pixelsPerSecond;
-    
-    setCurrentTime(Math.max(0, Math.min(duration, newTime)));
+    const trackLeft = 40;
+    const x = Math.max(0, e.clientX - rect.left - trackLeft);
+    const usableWidth = rect.width - trackLeft;
+    const newTime = (x / usableWidth) * totalDuration;
+
+    const clamped = Math.max(0, Math.min(totalDuration, newTime));
+    setCurrentTime(clamped);
+    onSeek?.(clamped);
   };
 
-  const totalDuration = Math.max(
-    ...layers.flatMap(layer => 
-      layer.clips.map(clip => (clip.end || clip.duration || 0))
-    ),
-    60 // Minimum 60 seconds
-  );
+  const handleClipSelect = (clipId, layerId) => {
+    selectClip(clipId, layerId);
+    onClipSelect?.(clipId, layerId);
+  };
+
+  const handlePlayClick = () => {
+    if (onPlayToggle) {
+      onPlayToggle(!isPlaying);
+    } else {
+      setPlaying(!isPlaying);
+    }
+  };
+
+  const clipCount = layers.reduce((n, layer) => n + layer.clips.length, 0);
 
   return (
     <div className="multi-layer-timeline" ref={timelineRef}>
       <div className="timeline-header">
         <h3>Timeline</h3>
         <div className="timeline-controls">
-          <button 
+          <button
+            type="button"
             className={`play-button ${isPlaying ? 'playing' : ''}`}
-            onClick={() => setPlaying(!isPlaying)}
+            onClick={handlePlayClick}
+            disabled={clipCount === 0}
           >
             {isPlaying ? '⏸' : '▶'}
           </button>
@@ -138,41 +185,41 @@ export default function MultiLayerTimeline() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="timeline-content" onClick={handleTimelineClick}>
-          {/* Time ruler */}
+        <div
+          className="timeline-content"
+          ref={trackRef}
+          onClick={handleTimelineClick}
+          role="presentation"
+        >
           <div className="time-ruler">
-            {Array.from({ length: Math.ceil(totalDuration / 10) + 1 }, (_, i) => (
-              <div 
-                key={i} 
-                className="time-marker"
-                style={{ left: `${(i * 10 / totalDuration) * 100}%` }}
-              >
-                {formatTime(i * 10)}
-              </div>
+            {Array.from(
+              { length: Math.ceil(totalDuration / 10) + 1 },
+              (_, i) => (
+                <div
+                  key={i}
+                  className="time-marker"
+                  style={{ left: `${(i * 10 / totalDuration) * 100}%` }}
+                >
+                  {formatTime(i * 10)}
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="layers-container">
+            {layers.map((layer) => (
+              <TimelineLayer
+                key={layer.id}
+                layer={layer}
+                totalDuration={totalDuration}
+                selectedClip={selectedClip}
+                selectedLayer={selectedLayer}
+                onSelectClip={handleClipSelect}
+              />
             ))}
           </div>
 
-          {/* Layers */}
-          <div className="layers-container">
-            <SortableContext 
-              items={layers.map(layer => layer.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {layers.map((layer) => (
-                <TimelineLayer
-                  key={layer.id}
-                  layer={layer}
-                  totalDuration={totalDuration}
-                  selectedClip={selectedClip}
-                  selectedLayer={selectedLayer}
-                  onSelectClip={selectClip}
-                />
-              ))}
-            </SortableContext>
-          </div>
-
-          {/* Playhead */}
-          <TimelinePlayhead 
+          <TimelinePlayhead
             currentTime={currentTime}
             totalDuration={totalDuration}
           />
@@ -183,7 +230,9 @@ export default function MultiLayerTimeline() {
             <div className="dragging-clip">
               <div className="clip-preview">
                 <div className="clip-name">{draggedClip.name}</div>
-                <div className="clip-duration">{formatTime(draggedClip.duration)}</div>
+                <div className="clip-duration">
+                  {formatTime(clipTrimmedDuration(draggedClip))}
+                </div>
               </div>
             </div>
           )}
@@ -191,11 +240,16 @@ export default function MultiLayerTimeline() {
       </DndContext>
 
       <div className="timeline-footer">
-        <button className="add-layer-btn" onClick={() => {/* Add layer logic */}}>
+        <button
+          type="button"
+          className="add-layer-btn"
+          onClick={() => addLayer('New Track', 'video')}
+        >
           + Add Layer
         </button>
         <div className="layer-info">
-          {layers.length} layer{layers.length !== 1 ? 's' : ''} • {totalDuration}s total
+          {layers.length} layer{layers.length !== 1 ? 's' : ''} •{' '}
+          {Math.round(totalDuration)}s total
         </div>
       </div>
     </div>

@@ -1,29 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TimelineProvider } from './contexts/TimelineContext.jsx';
+import { EditorProvider, useEditor } from './contexts/EditorContext.jsx';
 import VideoEditor from './components/VideoEditor.jsx';
 import SettingsWheel from './components/SettingsWheel.jsx';
 import BrandKit from './components/BrandKit.jsx';
 
-export default function App() {
+function AppShell() {
   const [theme, setTheme] = useState('dark');
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
   const [showBrandKit, setShowBrandKit] = useState(false);
-  const [ffmpegLoaded, setFFmpegLoaded] = useState(false);
+  const { actions, ffmpegLoaded, setBrandSettings } = useEditor();
 
-  // Load theme from localStorage on mount
   useEffect(() => {
     const savedTheme = localStorage.getItem('kinetic-theme') || 'dark';
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
-    
-    // Simulate FFmpeg loading status
-    const ffmpegTimer = setTimeout(() => {
-      setFFmpegLoaded(true);
-    }, 2000);
-    
-    return () => clearTimeout(ffmpegTimer);
   }, []);
 
   const handleThemeChange = (newTheme) => {
@@ -33,11 +26,7 @@ export default function App() {
   };
 
   const handleFFmpegReload = () => {
-    setFFmpegLoaded(false);
-    // Simulate FFmpeg reloading
-    setTimeout(() => {
-      setFFmpegLoaded(true);
-    }, 1500);
+    actions?.preloadFFmpeg?.();
   };
 
   const handleBrandKitOpen = () => {
@@ -202,13 +191,16 @@ export default function App() {
                   onMouseEnter={() => setShowProjectMenu(true)}
                   onMouseLeave={() => setShowProjectMenu(false)}
                 >
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); document.querySelector('.file-input').click(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addVideos?.(); }}>
                     📹 Add Videos
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); /* Trigger FFmpeg preload */ }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addAudio?.(); }}>
+                    🎵 Add Audio
+                  </a>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.preloadFFmpeg?.(); }}>
                     ⚡ Preload FFmpeg
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); /* Clear project */ }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.clearProject?.(); }}>
                     🗑️ Clear Project
                   </a>
                 </div>
@@ -232,10 +224,10 @@ export default function App() {
                   onMouseEnter={() => setShowExportMenu(true)}
                   onMouseLeave={() => setShowExportMenu(false)}
                 >
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); /* Export MP4 */ }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportVideo?.(); }}>
                     🎬 Export as MP4
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); /* Export MP3 */ }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportAudio?.(); }}>
                     🎵 Export as MP3
                   </a>
                 </div>
@@ -260,10 +252,7 @@ export default function App() {
                 <div className="brand-kit-overlay" onClick={handleBrandKitClose} />
                 <div className="brand-kit-content">
                   <button className="close-button" onClick={handleBrandKitClose}>✕</button>
-                  <BrandKit onBrandUpdate={(brandSettings) => {
-                    // Handle brand updates
-                    console.log('Brand settings updated:', brandSettings);
-                  }} />
+                  <BrandKit onBrandUpdate={setBrandSettings} />
                 </div>
               </div>
             )}
@@ -291,5 +280,13 @@ export default function App() {
         </footer>
       </>
     </TimelineProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <EditorProvider>
+      <AppShell />
+    </EditorProvider>
   );
 }
