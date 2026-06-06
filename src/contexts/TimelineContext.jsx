@@ -46,6 +46,8 @@ const ActionTypes = {
   ADD_LAYER: 'ADD_LAYER',
   REMOVE_LAYER: 'REMOVE_LAYER',
   CLEAR_PROJECT: 'CLEAR_PROJECT',
+  SPLIT_CLIP: 'SPLIT_CLIP',
+  DUPLICATE_CLIP: 'DUPLICATE_CLIP',
 };
 
 function packLayerClips(clips) {
@@ -245,6 +247,80 @@ function timelineReducer(state, action) {
         ),
       };
 
+    case ActionTypes.SPLIT_CLIP: {
+      const { layerId, clipId, splitTime } = action.payload;
+      return {
+        ...state,
+        layers: state.layers.map((layer) => {
+          if (layer.id !== layerId) return layer;
+
+          const clipIndex = layer.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return layer;
+
+          const clip = layer.clips[clipIndex];
+          const localSplitTime = splitTime - (clip.timelineStart ?? 0);
+
+          if (localSplitTime <= 0 || localSplitTime >= clipTrimmedDuration(clip)) {
+            return layer;
+          }
+
+          const splitPoint = (clip.sourceStart ?? 0) + localSplitTime;
+
+          const firstPart = {
+            ...clip,
+            id: `${clip.id}-split1`,
+            sourceEnd: splitPoint,
+            name: `${clip.name} (1)`,
+          };
+
+          const secondPart = {
+            ...clip,
+            id: `${clip.id}-split2`,
+            timelineStart: splitTime,
+            sourceStart: splitPoint,
+            name: `${clip.name} (2)`,
+          };
+
+          const nextClips = [...layer.clips];
+          nextClips.splice(clipIndex, 1, firstPart, secondPart);
+
+          return {
+            ...layer,
+            clips: packClipsForLayer(layerId, nextClips),
+          };
+        }),
+        selectedClip: null,
+      };
+    }
+
+    case ActionTypes.DUPLICATE_CLIP: {
+      const { layerId, clipId } = action.payload;
+      return {
+        ...state,
+        layers: state.layers.map((layer) => {
+          if (layer.id !== layerId) return layer;
+
+          const clip = layer.clips.find((c) => c.id === clipId);
+          if (!clip) return layer;
+
+          const nextClips = [...layer.clips];
+          const dupStart = (clip.timelineStart ?? 0) + clipTrimmedDuration(clip) + 0.5;
+          const duplicated = {
+            ...clip,
+            id: `clip-dup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: `${clip.name} (Copy)`,
+            timelineStart: dupStart,
+          };
+
+          nextClips.push(duplicated);
+          return {
+            ...layer,
+            clips: packClipsForLayer(layerId, nextClips),
+          };
+        }),
+      };
+    }
+
     case ActionTypes.CLEAR_PROJECT:
       return { ...initialTimelineState };
 
@@ -331,6 +407,14 @@ export function TimelineProvider({ children }) {
     dispatch({ type: ActionTypes.REMOVE_LAYER, payload: { layerId } });
   }, []);
 
+  const splitClip = useCallback((layerId, clipId, splitTime) => {
+    dispatch({ type: ActionTypes.SPLIT_CLIP, payload: { layerId, clipId, splitTime } });
+  }, []);
+
+  const duplicateClip = useCallback((layerId, clipId) => {
+    dispatch({ type: ActionTypes.DUPLICATE_CLIP, payload: { layerId, clipId } });
+  }, []);
+
   const clearProject = useCallback(() => {
     dispatch({ type: ActionTypes.CLEAR_PROJECT });
   }, []);
@@ -350,6 +434,8 @@ export function TimelineProvider({ children }) {
     setPlaying,
     addLayer,
     removeLayer,
+    splitClip,
+    duplicateClip,
     clearProject,
   };
 

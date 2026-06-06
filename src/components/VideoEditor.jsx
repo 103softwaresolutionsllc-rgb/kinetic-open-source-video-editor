@@ -20,6 +20,13 @@ import {
 import { applyBrandToVideo, buildFadeFilters } from '../utils/exportBranding.js';
 import { mixAudioTrackIntoVideo } from '../utils/exportAudioMix.js';
 
+// Integrated components
+import AudioMixer from './AudioMixer.jsx';
+import CropTool from './CropTool.jsx';
+import ExportPresets from './ExportPresets.jsx';
+import TextOverlay from './TextOverlay.jsx';
+import InteractiveTimeline from './InteractiveTimeline.jsx';
+
 function fmt(s) {
   if (s == null || isNaN(s)) return '0:00.0';
 
@@ -39,6 +46,13 @@ export default function VideoEditor() {
 
   const [previewClipId, setPreviewClipId] = useState(null);
   const [message, setMessage] = useState('Ready. Add a video to get started.');
+  const [activeTab, setActiveTab] = useState('clips');
+  const [textOverlays, setTextOverlays] = useState([]);
+  const [cropClip, setCropClip] = useState(null);
+  const [cropImage, setCropImage] = useState(null);
+  const [timelineMode, setTimelineMode] = useState('simple');
+  const [exportProgressLocal, setExportProgressLocal] = useState(0);
+  const [isExportingLocal, setIsExportingLocal] = useState(false);
 
   const { ffmpeg, fetchFile, loaded, progress, load } = useFFmpeg();
   const { registerActions, setFFmpegLoaded, brandSettings } = useEditor();
@@ -46,6 +60,7 @@ export default function VideoEditor() {
     layers,
     currentTime,
     selectedClip,
+    selectedLayer,
     isPlaying,
     addClip,
     removeClip,
@@ -54,6 +69,8 @@ export default function VideoEditor() {
     setCurrentTime,
     setDuration,
     setPlaying,
+    splitClip,
+    duplicateClip,
     clearProject: clearTimeline,
   } = useTimeline();
 
@@ -309,6 +326,158 @@ export default function VideoEditor() {
     });
   }
 
+  const handleOpenCrop = useCallback((clip) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Capture current frame from the video
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 360;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    try {
+      const dataUrl = canvas.toDataURL('image/jpeg');
+      setCropImage(dataUrl);
+      setCropClip(clip);
+    } catch (e) {
+      console.error('Failed to capture frame for crop:', e);
+      alert('Failed to capture frame. Please make sure the video is loaded and playing.');
+    }
+  }, []);
+
+  const handleCropComplete = useCallback((cropData) => {
+    if (cropClip) {
+      updateClip(VIDEO_LAYER_ID, cropClip.id, { crop: cropData.croppedAreaPixels });
+      setMessage(`Applied crop to "${cropClip.name}"`);
+    }
+    setCropClip(null);
+    setCropImage(null);
+  }, [cropClip, updateClip]);
+
+  const audioTracksForMixer = useMemo(() => {
+    return [
+      ...videoClips.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: 'Video Audio',
+        volume: c.volume ?? 1,
+        muted: c.muted ?? false,
+        solo: c.solo ?? false
+      })),
+      ...audioClips.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: 'Audio Track',
+        volume: c.volume ?? 1,
+        muted: c.muted ?? false,
+        solo: c.solo ?? false
+      }))
+    ];
+  }, [videoClips, audioClips]);
+
+  const handleVolumeChange = useCallback((id, volume) => {
+    const isVideo = videoClips.some(c => c.id === id);
+    updateClip(isVideo ? VIDEO_LAYER_ID : AUDIO_LAYER_ID, id, { volume });
+  }, [videoClips, updateClip]);
+
+  const handleMuteToggle = useCallback((id) => {
+    const isVideo = videoClips.some(c => c.id === id);
+    const clip = isVideo ? videoClips.find(c => c.id === id) : audioClips.find(c => c.id === id);
+    if (clip) {
+      updateClip(isVideo ? VIDEO_LAYER_ID : AUDIO_LAYER_ID, id, { muted: !clip.muted });
+    }
+  }, [videoClips, audioClips, updateClip]);
+
+  const handleSoloToggle = useCallback((id) => {
+    const isVideo = videoClips.some(c => c.id === id);
+    const clip = isVideo ? videoClips.find(c => c.id === id) : audioClips.find(c => c.id === id);
+    if (clip) {
+      updateClip(isVideo ? VIDEO_LAYER_ID : AUDIO_LAYER_ID, id, { solo: !clip.solo });
+    }
+  }, [videoClips, audioClips, updateClip]);
+
+  const handleMuteAll = useCallback(() => {
+    videoClips.forEach(c => updateClip(VIDEO_LAYER_ID, c.id, { muted: true }));
+    audioClips.forEach(c => updateClip(AUDIO_LAYER_ID, c.id, { muted: true }));
+  }, [videoClips, audioClips, updateClip]);
+
+  const handleSoloNone = useCallback(() => {
+    videoClips.forEach(c => updateClip(VIDEO_LAYER_ID, c.id, { solo: false }));
+    audioClips.forEach(c => updateClip(AUDIO_LAYER_ID, c.id, { solo: false }));
+  }, [videoClips, audioClips, updateClip]);
+
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
+  const handleRecordVoice = useCallback(() => {
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+      setMessage('Processing voice recording…');
+    } else {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          audioChunksRef.current = [];
+          const mediaRecorder = new MediaRecorder(stream);
+          mediaRecorderRef.current = mediaRecorder;
+          mediaRecorder.ondataavailable = e => {
+            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
+          mediaRecorder.onstop = () => {
+            const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const file = new File([blob], `voiceover-${Date.now()}.webm`, { type: 'audio/webm' });
+            const url = URL.createObjectURL(file);
+            
+            const audioHelper = document.createElement('audio');
+            audioHelper.src = url;
+            audioHelper.onloadedmetadata = () => {
+              addClip(AUDIO_LAYER_ID, {
+                id: crypto.randomUUID(),
+                file,
+                name: `Voiceover (${fmt(audioHelper.duration)})`,
+                url,
+                type: 'audio',
+                duration: audioHelper.duration,
+                sourceStart: 0,
+                sourceEnd: audioHelper.duration,
+                fadeIn: 0,
+                fadeOut: 0,
+                volume: 1,
+                muted: false,
+              });
+              setMessage('🎤 Voiceover added to audio track!');
+            };
+            stream.getTracks().forEach(t => t.stop());
+          };
+          mediaRecorder.start();
+          setIsRecording(true);
+          setMessage('🎙️ Recording voice… click "Record Voice" again to stop.');
+        })
+        .catch(err => {
+          console.error('Failed to start recording:', err);
+          alert('Microphone access is required to record voiceovers.');
+        });
+    }
+  }, [isRecording, addClip]);
+
+  const handleTextAdd = useCallback((newText) => {
+    setTextOverlays(prev => [...prev, newText]);
+    setMessage('📝 Text overlay added!');
+  }, []);
+
+  const handleTextUpdate = useCallback((id, updates) => {
+    setTextOverlays(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    setMessage('📝 Text overlay updated!');
+  }, []);
+
+  const handleTextRemove = useCallback((id) => {
+    setTextOverlays(prev => prev.filter(t => t.id !== id));
+    setMessage('🗑️ Text overlay removed.');
+  }, []);
+
   function removeClipById(layerId, clipId) {
     removeClip(layerId, clipId);
     if (previewClipId === clipId) {
@@ -373,35 +542,56 @@ export default function VideoEditor() {
   }
 
   // ─────────────────────────────────────────────
-  // Export MP4
+  // Export Video with Settings, Presets, and Overlays
   // ─────────────────────────────────────────────
-  async function exportVideo() {
+  async function exportVideo(settings = {}) {
     if (videoClips.length === 0) {
       alert('Add at least one clip first.');
       return;
     }
 
+    const {
+      format = 'mp4',
+      resolution = '1920x1080',
+      bitrate = '5M',
+      fps = 30,
+      gifFps = 10,
+      gifDuration = 5
+    } = settings;
+
+    setIsExportingLocal(true);
+    setExportProgressLocal(0);
+
     try {
       setMessage('Loading FFmpeg…');
-
       await load();
 
       const segFiles = [];
+      const [widthStr, heightStr] = resolution.split('x');
+      const w = Number(widthStr);
+      const h = Number(heightStr);
 
       for (let i = 0; i < videoClips.length; i++) {
         const clip = videoClips[i];
-
         const inName = `in${i}.mp4`;
         const segName = `seg${i}.mp4`;
 
         setMessage(`Encoding clip ${i + 1} of ${videoClips.length}…`);
-
         await ffmpeg.writeFile(inName, await fetchFile(clip.file));
 
         const start = clip.sourceStart ?? 0;
         const sourceEnd = clip.sourceEnd ?? clip.duration;
         const dur = sourceEnd != null ? sourceEnd - start : null;
         const { videoFilters, audioFilters } = buildFadeFilters(clip, dur);
+
+        // Apply Crop if configured
+        if (clip.crop) {
+          videoFilters.push(`crop=${Math.round(clip.crop.width)}:${Math.round(clip.crop.height)}:${Math.round(clip.crop.x)}:${Math.round(clip.crop.y)}`);
+        }
+
+        // Standardize output resolution to match preset (preserve aspect with padding)
+        videoFilters.push(`scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
+        videoFilters.push(`fps=${fps}`);
 
         await ffmpeg.exec([
           '-ss', `${start}`,
@@ -424,7 +614,6 @@ export default function VideoEditor() {
       );
 
       setMessage('Joining clips…');
-
       try {
         await ffmpeg.exec([
           '-f', 'concat',
@@ -435,7 +624,6 @@ export default function VideoEditor() {
         ]);
       } catch {
         setMessage('Re-encoding for compatibility…');
-
         await ffmpeg.exec([
           '-f', 'concat',
           '-safe', '0',
@@ -449,6 +637,43 @@ export default function VideoEditor() {
 
       let outputFile = 'output.mp4';
 
+      // ─────────────────────────────────────────────
+      // Apply Text Overlays
+      // ─────────────────────────────────────────────
+      if (textOverlays.length > 0) {
+        setMessage('Applying text overlays…');
+        try {
+          const fontResponse = await fetch('https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/Roboto-Regular.ttf');
+          const fontBuffer = await fontResponse.arrayBuffer();
+          await ffmpeg.writeFile('Roboto.ttf', new Uint8Array(fontBuffer));
+
+          let filterComplex = '[0:v]';
+          textOverlays.forEach((overlay) => {
+            const { text, fontSize, color, position, startTime, duration } = overlay;
+            const enable = `between(t,${startTime},${startTime + duration})`;
+            const colorHex = color.replace('#', '0x');
+            const x = `w*${position.x}/100`;
+            const y = `h*${position.y}/100`;
+            filterComplex += `,drawtext=text='${text.replace(/'/g, "\\'")}':fontfile=Roboto.ttf:fontsize=${fontSize}:fontcolor=${colorHex}:x=${x}:y=${y}:enable='${enable}'`;
+          });
+
+          await ffmpeg.exec([
+            '-i', outputFile,
+            '-filter_complex', filterComplex,
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-c:a', 'copy',
+            'output_text.mp4'
+          ]);
+          outputFile = 'output_text.mp4';
+        } catch (fontErr) {
+          console.error('Failed to apply text overlays:', fontErr);
+        }
+      }
+
+      // ─────────────────────────────────────────────
+      // Apply Brand Kit
+      // ─────────────────────────────────────────────
       if (brandSettings?.logo) {
         setMessage('Applying brand kit…');
         outputFile = await applyBrandToVideo(
@@ -459,6 +684,9 @@ export default function VideoEditor() {
         );
       }
 
+      // ─────────────────────────────────────────────
+      // Mix Audio Track
+      // ─────────────────────────────────────────────
       if (audioClips.length > 0) {
         setMessage('Mixing audio track…');
         outputFile = await mixAudioTrackIntoVideo(
@@ -469,14 +697,50 @@ export default function VideoEditor() {
         );
       }
 
-      const data = await ffmpeg.readFile(outputFile);
+      // ─────────────────────────────────────────────
+      // Convert format / resolution custom transcode
+      // ─────────────────────────────────────────────
+      let finalFile = outputFile;
+      let mimeType = 'video/mp4';
+      let extension = format;
 
-      triggerDownload(data, 'edited-video.mp4', 'video/mp4');
+      if (format === 'gif') {
+        setMessage('Generating high-quality GIF…');
+        await ffmpeg.exec([
+          '-i', outputFile,
+          '-t', `${gifDuration}`,
+          '-vf', `fps=${gifFps},scale=${w}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`,
+          '-loop', '0',
+          'output.gif'
+        ]);
+        finalFile = 'output.gif';
+        mimeType = 'image/gif';
+      } else if (format !== 'mp4' || resolution !== '1920x1080') {
+        setMessage(`Converting to ${format.toUpperCase()}…`);
+        const formattedOut = `output_final.${format}`;
+        const formatCodec = format === 'webm' ? ['-c:v', 'libvpx-vp9', '-c:a', 'libopus'] : ['-c:v', 'libx264', '-c:a', 'aac'];
+        
+        await ffmpeg.exec([
+          '-i', outputFile,
+          ...formatCodec,
+          '-preset', 'veryfast',
+          '-b:v', bitrate,
+          formattedOut
+        ]);
+        finalFile = formattedOut;
+        mimeType = format === 'webm' ? 'video/webm' : format === 'mov' ? 'video/quicktime' : 'video/mp4';
+      }
 
-      setMessage('✅ MP4 download started!');
+      const data = await ffmpeg.readFile(finalFile);
+      triggerDownload(data, `kinetic-project.${extension}`, mimeType);
+
+      setMessage(`✅ Export completed! Download started.`);
     } catch (err) {
       console.error(err);
       setMessage(`❌ Export failed: ${err.message}`);
+    } finally {
+      setIsExportingLocal(false);
+      setExportProgressLocal(0);
     }
   }
 
@@ -571,6 +835,39 @@ export default function VideoEditor() {
     brandSettings,
   ]);
 
+  const customTimelineEngine = useMemo(() => {
+    return {
+      current: {
+        splitClip: (trackId, clipId, splitTime) => {
+          splitClip(trackId, clipId, splitTime);
+          return true;
+        },
+        addClip: (trackId, clip) => {
+          addClip(trackId, {
+            ...clip,
+            id: crypto.randomUUID(),
+            sourceStart: clip.sourceStart ?? 0,
+            sourceEnd: clip.sourceEnd ?? clip.duration,
+            volume: clip.volume ?? 1,
+            muted: clip.muted ?? false,
+          });
+          return true;
+        }
+      }
+    };
+  }, [splitClip, addClip]);
+
+  const mappedTracks = useMemo(() => {
+    return layers.map(layer => ({
+      ...layer,
+      clips: layer.clips.map(clip => ({
+        ...clip,
+        startTime: clip.timelineStart ?? 0,
+        duration: clipTrimmedDuration(clip)
+      }))
+    }));
+  }, [layers]);
+
   // ─────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────
@@ -639,7 +936,7 @@ export default function VideoEditor() {
 
       <div className="editor-body">
         <div className="preview-column">
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', width: '100%' }}>
             <video
               ref={videoRef}
               className={`editor-preview ${
@@ -649,6 +946,35 @@ export default function VideoEditor() {
               }`}
               controls={false}
             />
+
+            {/* Real-time styled text overlays layered on preview */}
+            {textOverlays.map((text) => {
+              const isVisible = currentTime >= text.startTime && currentTime <= (text.startTime + text.duration);
+              if (!isVisible) return null;
+              return (
+                <div
+                  key={text.id}
+                  style={{
+                    position: 'absolute',
+                    left: `${text.position.x}%`,
+                    top: `${text.position.y}%`,
+                    transform: 'translate(-50%, -50%)',
+                    color: text.color,
+                    fontSize: `${text.fontSize * 0.4}px`, // scaled for preview
+                    fontFamily: text.fontFamily,
+                    fontStyle: text.fontFamily === 'Impact' ? 'normal' : 'inherit',
+                    fontWeight: text.fontFamily === 'Impact' ? 'bold' : 'normal',
+                    pointerEvents: 'none',
+                    textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                    zIndex: 10,
+                    whiteSpace: 'pre-wrap',
+                    textAlign: 'center'
+                  }}
+                >
+                  {text.text}
+                </div>
+              );
+            })}
 
             <div className="playback-controls">
               <button
@@ -718,232 +1044,418 @@ export default function VideoEditor() {
         </div>
 
         <aside className="clips-sidebar">
-          <h3>
-            Video{' '}
-            {videoClips.length > 0 && (
-              <span className="badge">{videoClips.length}</span>
-            )}
-          </h3>
-
-          {videoClips.length === 0 && (
-            <p className="muted">No video clips — use Add Videos above.</p>
-          )}
-
-          {videoClips.map((clip) => (
-            <div
-              key={clip.id}
-              className={`clip-item${
-                selectedClip === clip.id ? ' selected' : ''
-              }`}
+          <div className="sidebar-tabs" style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+            <button
+              className={`sidebar-tab ${activeTab === 'clips' ? 'active' : ''}`}
+              onClick={() => setActiveTab('clips')}
+              style={{
+                flex: 1,
+                background: activeTab === 'clips' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
+                border: '1px solid',
+                borderColor: activeTab === 'clips' ? 'var(--accent, #00FFD1)' : 'transparent',
+                padding: '8px 4px',
+                fontSize: '0.85rem',
+                color: activeTab === 'clips' ? 'var(--accent, #00FFD1)' : 'var(--text-secondary, #94a3b8)',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                transition: 'all 0.2s ease'
+              }}
             >
-              <div className="clip-row">
-                <div
-                  className="clip-name"
-                  title={clip.name}
-                >
-                  {clip.name}
-                </div>
-
-                <div className="clip-actions">
-                  <button
-                    onClick={() => previewClip(clip, clip.id, VIDEO_LAYER_ID)}
-                  >
-                    ▶ Preview
-                  </button>
-
-                  <button
-                    className="danger"
-                    onClick={() => removeClipById(VIDEO_LAYER_ID, clip.id)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div className="clip-controls">
-                <div className="range-row">
-                  <label>
-                    In{' '}
-                    <span className="time-badge">
-                      {fmt(clip.sourceStart ?? 0)}
-                    </span>
-                  </label>
-
-                  <input
-                    type="range"
-                    min="0"
-                    max={clip.duration}
-                    step="0.1"
-                    value={clip.sourceStart ?? 0}
-                    onChange={(e) =>
-                      setClipRange(
-                        VIDEO_LAYER_ID,
-                        clip.id,
-                        e.target.value,
-                        clip.sourceEnd
-                      )
-                    }
-                  />
-                </div>
-
-                <div className="range-row">
-                  <label>
-                    Out{' '}
-                    <span className="time-badge">
-                      {fmt(clip.sourceEnd ?? clip.duration)}
-                    </span>
-                  </label>
-
-                  <input
-                    type="range"
-                    min={clip.sourceStart ?? 0}
-                    max={clip.duration}
-                    step="0.1"
-                    value={clip.sourceEnd ?? clip.duration}
-                    onChange={(e) =>
-                      setClipRange(
-                        VIDEO_LAYER_ID,
-                        clip.id,
-                        clip.sourceStart ?? 0,
-                        e.target.value
-                      )
-                    }
-                  />
-                </div>
-
-                <div className="clip-duration-info">
-                  Duration:{' '}
-                  {fmt(clipTrimmedDuration(clip))}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          <h3 style={{ marginTop: 20 }}>
-            Audio{' '}
-            {audioClips.length > 0 && (
-              <span className="badge">{audioClips.length}</span>
-            )}
-          </h3>
-
-          {audioClips.length === 0 && (
-            <p className="muted">No audio clips — use Add Audio above.</p>
-          )}
-
-          {audioClips.map((clip) => (
-            <div
-              key={clip.id}
-              className={`clip-item${
-                selectedClip === clip.id ? ' selected' : ''
-              }`}
+              📁 Clips
+            </button>
+            <button
+              className={`sidebar-tab ${activeTab === 'text' ? 'active' : ''}`}
+              onClick={() => setActiveTab('text')}
+              style={{
+                flex: 1,
+                background: activeTab === 'text' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
+                border: '1px solid',
+                borderColor: activeTab === 'text' ? 'var(--accent, #00FFD1)' : 'transparent',
+                padding: '8px 4px',
+                fontSize: '0.85rem',
+                color: activeTab === 'text' ? 'var(--accent, #00FFD1)' : 'var(--text-secondary, #94a3b8)',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                transition: 'all 0.2s ease'
+              }}
             >
-              <div className="clip-row">
-                <div className="clip-name" title={clip.name}>
-                  {clip.name}
-                </div>
-                <div className="clip-actions">
-                  <button
-                    onClick={() => previewClip(clip, clip.id, AUDIO_LAYER_ID)}
-                  >
-                    ▶ Preview
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={() => removeClipById(AUDIO_LAYER_ID, clip.id)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
+              📝 Text
+            </button>
+            <button
+              className={`sidebar-tab ${activeTab === 'audio' ? 'active' : ''}`}
+              onClick={() => setActiveTab('audio')}
+              style={{
+                flex: 1,
+                background: activeTab === 'audio' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
+                border: '1px solid',
+                borderColor: activeTab === 'audio' ? 'var(--accent, #00FFD1)' : 'transparent',
+                padding: '8px 4px',
+                fontSize: '0.85rem',
+                color: activeTab === 'audio' ? 'var(--accent, #00FFD1)' : 'var(--text-secondary, #94a3b8)',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              🎚️ Mixer
+            </button>
+            <button
+              className={`sidebar-tab ${activeTab === 'export' ? 'active' : ''}`}
+              onClick={() => setActiveTab('export')}
+              style={{
+                flex: 1,
+                background: activeTab === 'export' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
+                border: '1px solid',
+                borderColor: activeTab === 'export' ? 'var(--accent, #00FFD1)' : 'transparent',
+                padding: '8px 4px',
+                fontSize: '0.85rem',
+                color: activeTab === 'export' ? 'var(--accent, #00FFD1)' : 'var(--text-secondary, #94a3b8)',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              📤 Export
+            </button>
+          </div>
 
-              <div className="clip-controls">
-                <div className="range-row">
-                  <label>
-                    In{' '}
-                    <span className="time-badge">
-                      {fmt(clip.sourceStart ?? 0)}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max={clip.duration}
-                    step="0.1"
-                    value={clip.sourceStart ?? 0}
-                    onChange={(e) =>
-                      setClipRange(
-                        AUDIO_LAYER_ID,
-                        clip.id,
-                        e.target.value,
-                        clip.sourceEnd
-                      )
-                    }
-                  />
-                </div>
-                <div className="range-row">
-                  <label>
-                    Out{' '}
-                    <span className="time-badge">
-                      {fmt(clip.sourceEnd ?? clip.duration)}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min={clip.sourceStart ?? 0}
-                    max={clip.duration}
-                    step="0.1"
-                    value={clip.sourceEnd ?? clip.duration}
-                    onChange={(e) =>
-                      setClipRange(
-                        AUDIO_LAYER_ID,
-                        clip.id,
-                        clip.sourceStart ?? 0,
-                        e.target.value
-                      )
-                    }
-                  />
-                </div>
-                <div className="range-row">
-                  <label>
-                    Volume{' '}
-                    <span className="time-badge">
-                      {Math.round((clip.volume ?? 1) * 100)}%
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    value={clip.volume ?? 1}
-                    onChange={(e) =>
-                      updateClip(AUDIO_LAYER_ID, clip.id, {
-                        volume: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="clip-duration-info">
-                  Timeline: {fmt(clip.timelineStart ?? 0)} • Duration:{' '}
-                  {fmt(clipTrimmedDuration(clip))}
-                </div>
-              </div>
-            </div>
-          ))}
+          <div className="sidebar-tab-content">
+            {activeTab === 'clips' && (
+              <>
+                <h3>
+                  Video{' '}
+                  {videoClips.length > 0 && (
+                    <span className="badge">{videoClips.length}</span>
+                  )}
+                </h3>
 
-          <TransitionControls
-            clips={videoClips}
-            selectedClip={selectedClipIndex >= 0 ? selectedClipIndex : null}
-            onFadeChange={handleFadeChange}
-          />
+                {videoClips.length === 0 && (
+                  <p className="muted">No video clips — use Add Videos above.</p>
+                )}
+
+                {videoClips.map((clip) => (
+                  <div
+                    key={clip.id}
+                    className={`clip-item${
+                      selectedClip === clip.id ? ' selected' : ''
+                    }`}
+                  >
+                    <div className="clip-row">
+                      <div
+                        className="clip-name"
+                        title={clip.name}
+                      >
+                        {clip.name}
+                      </div>
+
+                      <div className="clip-actions">
+                        <button
+                          onClick={() => previewClip(clip, clip.id, VIDEO_LAYER_ID)}
+                        >
+                          ▶ Preview
+                        </button>
+
+                        <button
+                          className="danger"
+                          onClick={() => removeClipById(VIDEO_LAYER_ID, clip.id)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="clip-controls">
+                      <div className="range-row">
+                        <label>
+                          In{' '}
+                          <span className="time-badge">
+                            {fmt(clip.sourceStart ?? 0)}
+                          </span>
+                        </label>
+
+                        <input
+                          type="range"
+                          min="0"
+                          max={clip.duration}
+                          step="0.1"
+                          value={clip.sourceStart ?? 0}
+                          onChange={(e) =>
+                            setClipRange(
+                              VIDEO_LAYER_ID,
+                              clip.id,
+                              e.target.value,
+                              clip.sourceEnd
+                            )
+                          }
+                        />
+                      </div>
+
+                      <div className="range-row">
+                        <label>
+                          Out{' '}
+                          <span className="time-badge">
+                            {fmt(clip.sourceEnd ?? clip.duration)}
+                          </span>
+                        </label>
+
+                        <input
+                          type="range"
+                          min={clip.sourceStart ?? 0}
+                          max={clip.duration}
+                          step="0.1"
+                          value={clip.sourceEnd ?? clip.duration}
+                          onChange={(e) =>
+                            setClipRange(
+                              VIDEO_LAYER_ID,
+                              clip.id,
+                              clip.sourceStart ?? 0,
+                              e.target.value
+                            )
+                          }
+                        />
+                      </div>
+
+                      {/* Crop Trigger Button */}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button 
+                          className="secondary small"
+                          onClick={() => handleOpenCrop(clip)}
+                          style={{ flex: 1, fontSize: '0.8rem', padding: '6px 12px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-primary)' }}
+                        >
+                          📐 Crop Frame
+                        </button>
+                        {clip.crop && (
+                          <span style={{ fontSize: '0.8rem', color: '#00FFD1', alignSelf: 'center', fontWeight: 'bold' }}>
+                            ✓ Cropped
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="clip-duration-info" style={{ marginTop: 8 }}>
+                        Duration:{' '}
+                        {fmt(clipTrimmedDuration(clip))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <h3 style={{ marginTop: 20 }}>
+                  Audio{' '}
+                  {audioClips.length > 0 && (
+                    <span className="badge">{audioClips.length}</span>
+                  )}
+                </h3>
+
+                {audioClips.length === 0 && (
+                  <p className="muted">No audio clips — use Add Audio above.</p>
+                )}
+
+                {audioClips.map((clip) => (
+                  <div
+                    key={clip.id}
+                    className={`clip-item${
+                      selectedClip === clip.id ? ' selected' : ''
+                    }`}
+                  >
+                    <div className="clip-row">
+                      <div className="clip-name" title={clip.name}>
+                        {clip.name}
+                      </div>
+                      <div className="clip-actions">
+                        <button
+                          onClick={() => previewClip(clip, clip.id, AUDIO_LAYER_ID)}
+                        >
+                          ▶ Preview
+                        </button>
+                        <button
+                          className="danger"
+                          onClick={() => removeClipById(AUDIO_LAYER_ID, clip.id)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="clip-controls">
+                      <div className="range-row">
+                        <label>
+                          In{' '}
+                          <span className="time-badge">
+                            {fmt(clip.sourceStart ?? 0)}
+                          </span>
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max={clip.duration}
+                          step="0.1"
+                          value={clip.sourceStart ?? 0}
+                          onChange={(e) =>
+                            setClipRange(
+                              AUDIO_LAYER_ID,
+                              clip.id,
+                              e.target.value,
+                              clip.sourceEnd
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="range-row">
+                        <label>
+                          Out{' '}
+                          <span className="time-badge">
+                            {fmt(clip.sourceEnd ?? clip.duration)}
+                          </span>
+                        </label>
+                        <input
+                          type="range"
+                          min={clip.sourceStart ?? 0}
+                          max={clip.duration}
+                          step="0.1"
+                          value={clip.sourceEnd ?? clip.duration}
+                          onChange={(e) =>
+                            setClipRange(
+                              AUDIO_LAYER_ID,
+                              clip.id,
+                              clip.sourceStart ?? 0,
+                              e.target.value
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="range-row">
+                        <label>
+                          Volume{' '}
+                          <span className="time-badge">
+                            {Math.round((clip.volume ?? 1) * 100)}%
+                          </span>
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2"
+                          step="0.05"
+                          value={clip.volume ?? 1}
+                          onChange={(e) =>
+                            updateClip(AUDIO_LAYER_ID, clip.id, {
+                              volume: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="clip-duration-info">
+                        Timeline: {fmt(clip.timelineStart ?? 0)} • Duration:{' '}
+                        {fmt(clipTrimmedDuration(clip))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <TransitionControls
+                  clips={videoClips}
+                  selectedClip={selectedClipIndex >= 0 ? selectedClipIndex : null}
+                  onFadeChange={handleFadeChange}
+                />
+              </>
+            )}
+
+            {activeTab === 'text' && (
+              <TextOverlay
+                texts={textOverlays}
+                onTextAdd={handleTextAdd}
+                onTextUpdate={handleTextUpdate}
+                onTextRemove={handleTextRemove}
+                currentTime={currentTime}
+              />
+            )}
+
+            {activeTab === 'audio' && (
+              <AudioMixer
+                audioTracks={audioTracksForMixer}
+                onVolumeChange={handleVolumeChange}
+                onMuteToggle={handleMuteToggle}
+                onSoloToggle={handleSoloToggle}
+                onImportMusic={() => audioFileInputRef.current?.click()}
+                onRecordVoice={handleRecordVoice}
+                onMuteAll={handleMuteAll}
+                onSoloNone={handleSoloNone}
+              />
+            )}
+
+            {activeTab === 'export' && (
+              <ExportPresets
+                onExport={exportVideo}
+                ffmpegLoaded={loaded}
+                exportProgress={exportProgressLocal}
+                isExporting={isExportingLocal}
+              />
+            )}
+          </div>
         </aside>
       </div>
 
-      <MultiLayerTimeline
-        onSeek={handleTimelineSeek}
-        onClipSelect={handleClipSelect}
-        onPlayToggle={handlePlayToggle}
-      />
+      {/* Timeline Toggle Switcher */}
+      <div className="timeline-mode-toggle" style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px', gap: 12, borderTop: '1px solid var(--border)', background: 'var(--surface-secondary)', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Timeline Type:</span>
+        <button
+          onClick={() => setTimelineMode('simple')}
+          style={{
+            background: timelineMode === 'simple' ? 'var(--electric-purple)' : 'transparent',
+            color: 'white',
+            border: '1px solid var(--glass-border)',
+            borderRadius: '4px',
+            padding: '4px 10px',
+            cursor: 'pointer',
+            fontSize: '0.8rem'
+          }}
+        >
+          Simple (Drag & Drop)
+        </button>
+        <button
+          onClick={() => setTimelineMode('advanced')}
+          style={{
+            background: timelineMode === 'advanced' ? 'var(--electric-purple)' : 'transparent',
+            color: 'white',
+            border: '1px solid var(--glass-border)',
+            borderRadius: '4px',
+            padding: '4px 10px',
+            cursor: 'pointer',
+            fontSize: '0.8rem'
+          }}
+        >
+          Advanced (Clip Controls)
+        </button>
+      </div>
+
+      {timelineMode === 'simple' ? (
+        <MultiLayerTimeline
+          onSeek={handleTimelineSeek}
+          onClipSelect={handleClipSelect}
+          onPlayToggle={handlePlayToggle}
+        />
+      ) : (
+        <InteractiveTimeline
+          timelineEngine={customTimelineEngine}
+          onTimeChange={handleTimelineSeek}
+          onClipSelect={(clip) => handleClipSelect(clip.id, clip.type === 'video' ? VIDEO_LAYER_ID : AUDIO_LAYER_ID)}
+          currentTime={currentTime}
+          duration={duration}
+          tracks={mappedTracks}
+        />
+      )}
+
+      {/* Crop Tool Overlay Modal */}
+      {cropClip && cropImage && (
+        <CropTool
+          image={cropImage}
+          onCropComplete={handleCropComplete}
+          onClose={() => {
+            setCropClip(null);
+            setCropImage(null);
+          }}
+          initialAspect={16/9}
+        />
+      )}
 
       <div className="status-row">
         <span

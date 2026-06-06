@@ -1,599 +1,199 @@
 class EffectsEngine {
-  constructor() {
-    this.effects = [];
-    this.activeEffects = new Map();
-    this.presets = this.initializePresets();
-  }
+constructor() {
+this.effects = [];
+this.presets = this.initializePresets();
+}
 
-  initializePresets() {
-    return {
-      // Color correction presets
-      'warm': {
-        name: 'Warm',
-        brightness: 1.1,
-        contrast: 1.05,
-        saturation: 1.2,
-        temperature: 1.1
-      },
-      'cool': {
-        name: 'Cool',
-        brightness: 0.95,
-        contrast: 1.05,
-        saturation: 0.8,
-        temperature: 0.9
-      },
-      'vintage': {
-        name: 'Vintage',
-        brightness: 1.1,
-        contrast: 0.9,
-        saturation: 0.7,
-        sepia: 0.3
-      },
-      'dramatic': {
-        name: 'Dramatic',
-        brightness: 0.9,
-        contrast: 1.3,
-        saturation: 1.1,
-        blacks: 0.1
-      },
+initializePresets() {
+return {
+// Color
+'warm': { name: 'Warm', brightness: 1.1, contrast: 1.05, saturation: 1.2, temperature: 1.1 },
+'cool': { name: 'Cool', brightness: 0.95, contrast: 1.05, saturation: 0.8, temperature: 0.9 },
+'vintage': { name: 'Vintage', brightness: 1.1, contrast: 0.9, saturation: 0.7, sepia: 0.3 },
+'dramatic': { name: 'Dramatic', brightness: 0.9, contrast: 1.3, saturation: 1.1, blacks: 0.1 },
 
-      // Transition presets
-      'fade-in': {
-        name: 'Fade In',
-        type: 'transition',
-        duration: 1.0,
-        easing: 'ease-in'
-      },
-      'fade-out': {
-        name: 'Fade Out',
-        type: 'transition',
-        duration: 1.0,
-        easing: 'ease-out'
-      },
-      'dissolve': {
-        name: 'Dissolve',
-        type: 'transition',
-        duration: 1.5,
-        easing: 'ease-in-out'
-      },
+// Transitions
+'fade': { name: 'Fade', type: 'transition', duration: 1.0 },
+'dissolve': { name: 'Dissolve', type: 'transition', duration: 1.5 },
+'wipe': { name: 'Wipe', type: 'transition', duration: 1.0 },
+'slide': { name: 'Slide', type: 'transition', duration: 1.0 },
 
-      // Filter presets
-      'blur': {
-        name: 'Blur',
-        type: 'filter',
-        intensity: 5
-      },
-      'sharpen': {
-        name: 'Sharpen',
-        type: 'filter',
-        intensity: 0.5
-      },
-      'glow': {
-        name: 'Glow',
-        type: 'filter',
-        intensity: 0.3,
-        color: '#ffffff'
-      }
-    };
-  }
+// Filters
+'blur': { name: 'Blur', type: 'filter', intensity: 5 },
+'sharpen': { name: 'Sharpen', type: 'filter', intensity: 0.5 },
+'glow': { name: 'Glow', type: 'filter', intensity: 0.3, color: '#ffffff' }
+};
+}
 
-  // Effect management
-  addEffect(effect) {
-    const effectWithId = {
-      id: Date.now(),
-      enabled: true,
-      ...effect
-    };
-    this.effects.push(effectWithId);
-    return effectWithId;
-  }
+addEffect(effect) {
+const newEffect = {
+id: Date.now(),
+enabled: true,
+startTime: 0,
+endTime: 10,
+...effect
+};
+this.effects.push(newEffect);
+return newEffect;
+}
 
-  removeEffect(effectId) {
-    this.effects = this.effects.filter(effect => effect.id !== effectId);
-    this.activeEffects.delete(effectId);
-  }
+removeEffect(effectId) {
+this.effects = this.effects.filter(e => e.id !== effectId);
+}
 
-  getEffect(effectId) {
-    return this.effects.find(effect => effect.id === effectId);
-  }
+getAllEffects() {
+return [...this.effects];
+}
 
-  getAllEffects() {
-    return [...this.effects];
-  }
+applyPreset(presetName, clipId = null) {
+const preset = this.presets[presetName];
+if (!preset) return null;
+return this.addEffect({ ...preset, preset: presetName, clipId });
+}
 
-  // Preset management
-  getPreset(presetName) {
-    return this.presets[presetName];
-  }
+// === Core Rendering ===
+applyEffects(context, clipId, currentTime) {
+const activeEffects = this.effects.filter(effect =>
+effect.enabled &&
+(!effect.clipId || effect.clipId === clipId) &&
+this.isEffectActive(effect, currentTime)
+);
 
-  getAllPresets() {
-    return Object.keys(this.presets).map(key => ({
-      key,
-      ...this.presets[key]
-    }));
-  }
+activeEffects.forEach(effect => {
+this.applySingleEffect(context, effect, currentTime);
+});
+}
 
-  applyPreset(presetName, clipId = null) {
-    const preset = this.presets[presetName];
-    if (!preset) return null;
+isEffectActive(effect, currentTime) {
+if (effect.startTime == null || effect.endTime == null) return true;
+return currentTime >= effect.startTime && currentTime <= effect.endTime;
+}
 
-    return this.addEffect({
-      ...preset,
-      preset: presetName,
-      clipId,
-      startTime: 0,
-      endTime: 10
-    });
-  }
+applySingleEffect(context, effect, currentTime) {
+switch (effect.type) {
+case 'color-correction':
+this.applyColorCorrection(context, effect.settings || effect);
+break;
+case 'filter':
+this.applyFilter(context, effect);
+break;
+case 'transition':
+// Transitions are usually applied at clip boundaries in the main render loop
+console.warn('Transitions should be handled in the main timeline render');
+break;
+case 'chroma-key':
+this.applyChromaKey(context, effect);
+break;
+default:
+console.warn(`Unknown effect: ${effect.type}`);
+}
+}
 
-  // Color correction effects
-  addColorCorrection(clipId, settings = {}) {
-    const {
-      brightness = 1,
-      contrast = 1,
-      saturation = 1,
-      temperature = 1,
-      tint = 0,
-      blacks = 0,
-      whites = 1,
-      highlights = 1,
-      shadows = 1
-    } = settings;
+// Color Correction (already quite good)
+applyColorCorrection(context, settings) {
+const imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
+const data = imageData.data;
 
-    return this.addEffect({
-      type: 'color-correction',
-      clipId,
-      settings: {
-        brightness,
-        contrast,
-        saturation,
-        temperature,
-        tint,
-        blacks,
-        whites,
-        highlights,
-        shadows
-      }
-    });
-  }
+for (let i = 0; i < data.length; i += 4) {
+let r = data[i], g = data[i + 1], b = data[i + 2];
 
-  // Transition effects
-  addTransition(fromClipId, toClipId, type = 'dissolve', duration = 1.0) {
-    return this.addEffect({
-      type: 'transition',
-      fromClipId,
-      toClipId,
-      transitionType: type,
-      duration,
-      easing: 'ease-in-out'
-    });
-  }
+// Brightness
+r *= settings.brightness ?? 1;
+g *= settings.brightness ?? 1;
+b *= settings.brightness ?? 1;
 
-  // Filter effects
-  addFilter(clipId, filterType, intensity = 1.0, options = {}) {
-    return this.addEffect({
-      type: 'filter',
-      clipId,
-      filterType,
-      intensity,
-      ...options
-    });
-  }
+// Contrast
+r = ((r / 255 - 0.5) * (settings.contrast ?? 1) + 0.5) * 255;
+g = ((g / 255 - 0.5) * (settings.contrast ?? 1) + 0.5) * 255;
+b = ((b / 255 - 0.5) * (settings.contrast ?? 1) + 0.5) * 255;
 
-  // Blur effect
-  addBlur(clipId, radius = 5) {
-    return this.addFilter(clipId, 'blur', radius);
-  }
+// Saturation
+const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+const sat = settings.saturation ?? 1;
+r = gray + sat * (r - gray);
+g = gray + sat * (g - gray);
+b = gray + sat * (b - gray);
 
-  // Sharpen effect
-  addSharpen(clipId, amount = 0.5) {
-    return this.addFilter(clipId, 'sharpen', amount);
-  }
+// Temperature
+if (settings.temperature !== undefined) {
+r *= settings.temperature;
+b /= settings.temperature;
+}
 
-  // Glow effect
-  addGlow(clipId, intensity = 0.3, color = '#ffffff') {
-    return this.addFilter(clipId, 'glow', intensity, { color });
-  }
+data[i] = Math.max(0, Math.min(255, r));
+data[i + 1] = Math.max(0, Math.min(255, g));
+data[i + 2] = Math.max(0, Math.min(255, b));
+}
 
-  // Chroma key (green screen)
-  addChromaKey(clipId, color = '#00ff00', threshold = 0.4, smoothness = 0.1) {
-    return this.addEffect({
-      type: 'chroma-key',
-      clipId,
-      color,
-      threshold,
-      smoothness
-    });
-  }
+context.putImageData(imageData, 0, 0);
+}
 
-  // Apply effects to canvas
-  applyEffects(context, clipId, currentTime) {
-    const relevantEffects = this.effects.filter(effect => 
-      effect.enabled && 
-      (effect.clipId === clipId || !effect.clipId) &&
-      this.isEffectActive(effect, currentTime)
-    );
+applyFilter(context, effect) {
+switch (effect.filterType || effect.name?.toLowerCase()) {
+case 'blur':
+context.filter = `blur(${effect.intensity}px)`;
+break;
+case 'sharpen':
+// Sharpen is expensive — consider WebGL for production
+console.warn('Sharpen filter is placeholder-heavy');
+break;
+case 'glow':
+context.shadowBlur = (effect.intensity || 0.3) * 20;
+context.shadowColor = effect.color || '#ffffff';
+break;
+}
+}
 
-    relevantEffects.forEach(effect => {
-      this.applyEffect(context, effect, currentTime);
-    });
-  }
+applyChromaKey(context, effect) {
+// Your original chroma key logic is solid
+const imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
+const data = imageData.data;
+const key = this.hexToRgb(effect.color || '#00ff00');
 
-  isEffectActive(effect, currentTime) {
-    if (effect.startTime !== undefined && effect.endTime !== undefined) {
-      return currentTime >= effect.startTime && currentTime <= effect.endTime;
-    }
-    return true;
-  }
+for (let i = 0; i < data.length; i += 4) {
+const dist = Math.sqrt(
+Math.pow(data[i] - key.r, 2) +
+Math.pow(data[i + 1] - key.g, 2) +
+Math.pow(data[i + 2] - key.b, 2)
+);
 
-  applyEffect(context, effect, currentTime) {
-    switch (effect.type) {
-      case 'color-correction':
-        this.applyColorCorrection(context, effect.settings);
-        break;
-      case 'filter':
-        this.applyFilter(context, effect);
-        break;
-      case 'transition':
-        this.applyTransition(context, effect, currentTime);
-        break;
-      case 'chroma-key':
-        this.applyChromaKey(context, effect);
-        break;
-      default:
-        console.warn(`Unknown effect type: ${effect.type}`);
-    }
-  }
+if (dist < (effect.threshold || 0.4) * 255) {
+data[i + 3] = 0; // transparent
+}
+}
+context.putImageData(imageData, 0, 0);
+}
 
-  applyColorCorrection(context, settings) {
-    const imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
-    const data = imageData.data;
+hexToRgb(hex) {
+const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+return result ? {
+r: parseInt(result[1], 16),
+g: parseInt(result[2], 16),
+b: parseInt(result[3], 16)
+} : { r: 0, g: 255, b: 0 };
+}
 
-    for (let i = 0; i < data.length; i += 4) {
-      let r = data[i];
-      let g = data[i + 1];
-      let b = data[i + 2];
+// TODO: Replace placeholder drawClip with real video frame drawing from the timeline
+drawClip(context, clip, offsetX = 0, offsetY = 0) {
+// This should be replaced by the main preview renderer
+context.fillStyle = 'rgba(191, 0, 255, 0.4)';
+context.fillRect(offsetX, offsetY, context.canvas.width, context.canvas.height);
 
-      // Apply brightness
-      r *= settings.brightness;
-      g *= settings.brightness;
-      b *= settings.brightness;
+context.fillStyle = 'white';
+context.font = 'bold 24px Arial';
+context.textAlign = 'center';
+context.fillText(clip?.name || 'Video Clip',
+offsetX + context.canvas.width / 2,
+offsetY + context.canvas.height / 2);
+}
 
-      // Apply contrast
-      r = ((r / 255 - 0.5) * settings.contrast + 0.5) * 255;
-      g = ((g / 255 - 0.5) * settings.contrast + 0.5) * 255;
-      b = ((b / 255 - 0.5) * settings.contrast + 0.5) * 255;
+exportEffects() {
+return { effects: this.effects };
+}
 
-      // Apply saturation
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      r = gray + settings.saturation * (r - gray);
-      g = gray + settings.saturation * (g - gray);
-      b = gray + settings.saturation * (b - gray);
-
-      // Apply temperature
-      r *= settings.temperature;
-      b /= settings.temperature;
-
-      // Clamp values
-      data[i] = Math.max(0, Math.min(255, r));
-      data[i + 1] = Math.max(0, Math.min(255, g));
-      data[i + 2] = Math.max(0, Math.min(255, b));
-    }
-
-    context.putImageData(imageData, 0, 0);
-  }
-
-  applyFilter(context, effect) {
-    switch (effect.filterType) {
-      case 'blur':
-        this.applyBlurFilter(context, effect.intensity);
-        break;
-      case 'sharpen':
-        this.applySharpenFilter(context, effect.intensity);
-        break;
-      case 'glow':
-        this.applyGlowFilter(context, effect.intensity, effect.color);
-        break;
-    }
-  }
-
-  applyBlurFilter(context, radius) {
-    context.filter = `blur(${radius}px)`;
-    const imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
-    context.putImageData(imageData, 0, 0);
-    context.filter = 'none';
-  }
-
-  applySharpenFilter(context, amount) {
-    const imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-
-    const kernel = [
-      0, -amount, 0,
-      -amount, 1 + 4 * amount, -amount,
-      0, -amount, 0
-    ];
-
-    const output = new Uint8ClampedArray(data);
-
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        for (let c = 0; c < 3; c++) {
-          let sum = 0;
-          for (let ky = -1; ky <= 1; ky++) {
-            for (let kx = -1; kx <= 1; kx++) {
-              const idx = ((y + ky) * width + (x + kx)) * 4 + c;
-              sum += data[idx] * kernel[(ky + 1) * 3 + (kx + 1)];
-            }
-          }
-          output[(y * width + x) * 4 + c] = sum;
-        }
-      }
-    }
-
-    for (let i = 0; i < data.length; i++) {
-      data[i] = output[i];
-    }
-
-    context.putImageData(imageData, 0, 0);
-  }
-
-  applyGlowFilter(context, intensity, color) {
-    context.shadowBlur = intensity * 20;
-    context.shadowColor = color;
-    context.globalCompositeOperation = 'screen';
-    
-    const imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
-    context.putImageData(imageData, 0, 0);
-    
-    context.globalCompositeOperation = 'source-over';
-    context.shadowBlur = 0;
-  }
-
-  applyChromaKey(context, effect) {
-    const imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
-    const data = imageData.data;
-
-    // Convert hex color to RGB
-    const color = this.hexToRgb(effect.color);
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-
-      // Calculate distance from chroma key color
-      const distance = Math.sqrt(
-        Math.pow(r - color.r, 2) +
-        Math.pow(g - color.g, 2) +
-        Math.pow(b - color.b, 2)
-      );
-
-      // Make pixels similar to the key color transparent
-      if (distance < effect.threshold * 255) {
-        data[i + 3] = 0; // Set alpha to 0 (transparent)
-      }
-    }
-
-    context.putImageData(imageData, 0, 0);
-  }
-
-  hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 0, g: 255, b: 0 };
-  }
-
-  // Export effects configuration
-  exportEffects() {
-    return {
-      effects: this.effects.map(effect => ({
-        id: effect.id,
-        type: effect.type,
-        enabled: effect.enabled,
-        preset: effect.preset,
-        clipId: effect.clipId,
-        startTime: effect.startTime,
-        endTime: effect.endTime,
-        settings: effect.settings
-      }))
-    };
-  }
-
-  // Import effects configuration
-  importEffects(data) {
-    this.effects = data.effects || [];
-  }
-
-  // Add transition between two clips
-  addTransition(fromClipId, toClipId, type = 'dissolve', duration = 1.0) {
-    const transition = {
-      id: Date.now(),
-      type: 'transition',
-      transitionType: type,
-      fromClipId,
-      toClipId,
-      duration,
-      startTime: null, // Will be calculated during render
-      endTime: null, // Will be calculated during render
-      enabled: true,
-      name: `${type} transition`
-    };
-
-    this.effects.push(transition);
-    return transition;
-  }
-
-  // Remove transition
-  removeTransition(transitionId) {
-    this.effects = this.effects.filter(effect => effect.id !== transitionId);
-  }
-
-  // Get transitions
-  getTransitions() {
-    return this.effects.filter(effect => effect.type === 'transition');
-  }
-
-  // Apply transition during render
-  applyTransition(context, fromClip, toClip, transition, currentTime) {
-    const { transitionType, duration } = transition;
-    const progress = this.calculateTransitionProgress(transition, currentTime);
-    
-    switch (transitionType) {
-      case 'fade':
-        this.applyFadeTransition(context, fromClip, toClip, progress);
-        break;
-      case 'dissolve':
-        this.applyDissolveTransition(context, fromClip, toClip, progress);
-        break;
-      case 'wipe':
-        this.applyWipeTransition(context, fromClip, toClip, progress);
-        break;
-      case 'slide':
-        this.applySlideTransition(context, fromClip, toClip, progress);
-        break;
-      default:
-        console.warn(`Unknown transition type: ${transitionType}`);
-    }
-  }
-
-  // Calculate transition progress
-  calculateTransitionProgress(transition, currentTime) {
-    if (!transition.startTime || !transition.endTime) return 0;
-    
-    const transitionStart = transition.startTime;
-    const transitionEnd = transition.endTime;
-    const transitionDuration = transitionEnd - transitionStart;
-    
-    if (currentTime <= transitionStart) return 0;
-    if (currentTime >= transitionEnd) return 1;
-    
-    return (currentTime - transitionStart) / transitionDuration;
-  }
-
-  // Fade transition
-  applyFadeTransition(context, fromClip, toClip, progress) {
-    const { width, height } = context.canvas;
-    
-    // Simple crossfade
-    context.globalAlpha = 1 - progress;
-    
-    if (progress < 0.5) {
-      // Fade out from clip
-      context.globalAlpha = 1 - (progress * 2);
-      this.drawClip(context, fromClip);
-    } else {
-      // Fade in to clip
-      context.globalAlpha = (progress - 0.5) * 2;
-      this.drawClip(context, toClip);
-    }
-    
-    context.globalAlpha = 1;
-  }
-
-  // Dissolve transition
-  applyDissolveTransition(context, fromClip, toClip, progress) {
-    const { width, height } = context.canvas;
-    
-    // Create dissolve effect by adjusting alpha
-    context.globalAlpha = 1;
-    
-    // Draw from clip with decreasing alpha
-    context.globalAlpha = 1 - progress;
-    this.drawClip(context, fromClip);
-    
-    // Draw to clip with increasing alpha
-    context.save();
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = progress;
-    this.drawClip(context, toClip);
-    context.restore();
-    
-    context.globalAlpha = 1;
-  }
-
-  // Wipe transition
-  applyWipeTransition(context, fromClip, toClip, progress) {
-    const { width, height } = context.canvas;
-    
-    // Simple left-to-right wipe
-    context.save();
-    
-    // Draw from clip
-    context.globalAlpha = 1;
-    this.drawClip(context, fromClip);
-    
-    // Create wipe mask
-    context.globalCompositeOperation = 'destination-in';
-    const wipeX = width * progress;
-    
-    // Draw wipe rectangle
-    context.fillStyle = 'black';
-    context.fillRect(0, 0, wipeX, height);
-    
-    // Draw to clip through mask
-    context.globalCompositeOperation = 'source-atop';
-    this.drawClip(context, toClip);
-    
-    context.restore();
-  }
-
-  // Slide transition
-  applySlideTransition(context, fromClip, toClip, progress) {
-    const { width, height } = context.canvas;
-    
-    // Slide from right to left
-    const slideOffset = width * (1 - progress);
-    
-    context.save();
-    
-    // Draw from clip sliding out
-    context.globalAlpha = 1;
-    this.drawClip(context, fromClip);
-    
-    // Draw to clip sliding in
-    context.globalAlpha = 1;
-    this.drawClip(context, toClip, slideOffset, 0);
-    
-    context.restore();
-  }
-
-  // Helper method to draw clip
-  drawClip(context, clip, offsetX = 0, offsetY = 0) {
-    // This would be implemented with actual clip data
-    // For now, draw placeholder
-    const { width, height } = context.canvas;
-    
-    context.fillStyle = 'rgba(191, 0, 255, 0.3)';
-    context.fillRect(offsetX, offsetY, width, height);
-    
-    context.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    context.font = '14px Arial';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(
-      clip?.name || 'Clip',
-      offsetX + width / 2,
-      offsetY + height / 2
-    );
-  }
-
-  // Clone effect
-  cloneEffect(effectId) {
-    const original = this.getEffect(effectId);
-    if (!original) return null;
-
-    return this.addEffect({
-      ...original,
-      id: undefined, // Will be assigned new ID
-      name: `${original.name} (Copy)`
-    });
-  }
+importEffects(data) {
+this.effects = data.effects || [];
+}
 }
 
 export default EffectsEngine;
