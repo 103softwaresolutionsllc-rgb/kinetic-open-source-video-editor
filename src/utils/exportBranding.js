@@ -6,9 +6,41 @@ const OVERLAY_POSITIONS = {
   center: '(W-w)/2:(H-h)/2',
 };
 
-export async function applyBrandToVideo(ffmpeg, fetchFile, brandSettings, inputName = 'output.mp4') {
-  if (!brandSettings?.logo) {
+const NEON_GLOW_FILTER = 'colorbalance=rs=0.1:gs=-0.2:bs=0.3';
+
+export function brandSettingsAffectExport(brandSettings) {
+  if (!brandSettings) return false;
+  return Boolean(brandSettings.logo || brandSettings.neonGlow);
+}
+
+export async function applyBrandToVideo(
+  ffmpeg,
+  fetchFile,
+  brandSettings,
+  inputName = 'output.mp4'
+) {
+  if (!brandSettingsAffectExport(brandSettings)) {
     return inputName;
+  }
+
+  const hasLogo = Boolean(brandSettings.logo);
+  const hasGlow = Boolean(brandSettings.neonGlow);
+
+  if (!hasLogo && hasGlow) {
+    await ffmpeg.exec([
+      '-i',
+      inputName,
+      '-vf',
+      NEON_GLOW_FILTER,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-c:a',
+      'copy',
+      'branded-output.mp4',
+    ]);
+    return 'branded-output.mp4';
   }
 
   const response = await fetch(brandSettings.logo);
@@ -18,8 +50,8 @@ export async function applyBrandToVideo(ffmpeg, fetchFile, brandSettings, inputN
   const overlayPos =
     OVERLAY_POSITIONS[brandSettings.position] || OVERLAY_POSITIONS['bottom-right'];
 
-  const filter = brandSettings.neonGlow
-    ? `[0:v]colorbalance=rs=0.1:gs=-0.2:bs=0.3[base];[base][1:v]overlay=${overlayPos}`
+  const filter = hasGlow
+    ? `[0:v]${NEON_GLOW_FILTER}[base];[base][1:v]overlay=${overlayPos}`
     : `[0:v][1:v]overlay=${overlayPos}`;
 
   await ffmpeg.exec([

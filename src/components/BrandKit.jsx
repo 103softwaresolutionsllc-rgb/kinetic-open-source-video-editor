@@ -1,24 +1,52 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { BRAND_PREVIEW_POSITIONS } from '../utils/previewCrop.js';
 
-export default function BrandKit({ onBrandUpdate }) {
-  const [logo, setLogo] = useState(null);
-  const [brandColor, setBrandColor] = useState('#BF00FF');
-  const [neonGlow, setNeonGlow] = useState(true);
-  const [position, setPosition] = useState('bottom-right');
+function settingsPayload(logo, brandColor, neonGlow, position) {
+  return {
+    logo: logo || null,
+    brandColor,
+    neonGlow,
+    position,
+  };
+}
+
+export default function BrandKit({ initialSettings = null, onBrandUpdate }) {
+  const [logo, setLogo] = useState(initialSettings?.logo ?? null);
+  const [brandColor, setBrandColor] = useState(
+    initialSettings?.brandColor ?? '#BF00FF'
+  );
+  const [neonGlow, setNeonGlow] = useState(initialSettings?.neonGlow ?? true);
+  const [position, setPosition] = useState(
+    initialSettings?.position ?? 'bottom-right'
+  );
+  const [showCustomColor, setShowCustomColor] = useState(false);
   const fileInputRef = useRef(null);
+
+  const pushUpdate = useCallback(
+    (next) => {
+      onBrandUpdate?.(
+        settingsPayload(next.logo, next.brandColor, next.neonGlow, next.position)
+      );
+    },
+    [onBrandUpdate]
+  );
+
+  useEffect(() => {
+    if (!initialSettings) return;
+    setLogo(initialSettings.logo ?? null);
+    setBrandColor(initialSettings.brandColor ?? '#BF00FF');
+    setNeonGlow(initialSettings.neonGlow ?? true);
+    setPosition(initialSettings.position ?? 'bottom-right');
+  }, [initialSettings]);
 
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        setLogo(event.target.result);
-        onBrandUpdate({
-          logo: event.target.result,
-          brandColor,
-          neonGlow,
-          position
-        });
+        const nextLogo = event.target.result;
+        setLogo(nextLogo);
+        pushUpdate({ logo: nextLogo, brandColor, neonGlow, position });
       };
       reader.readAsDataURL(file);
     }
@@ -26,39 +54,18 @@ export default function BrandKit({ onBrandUpdate }) {
 
   const handleColorChange = (color) => {
     setBrandColor(color);
-    if (logo) {
-      onBrandUpdate({
-        logo,
-        brandColor: color,
-        neonGlow,
-        position
-      });
-    }
+    pushUpdate({ logo, brandColor: color, neonGlow, position });
   };
 
   const handleNeonGlowToggle = () => {
-    const newNeonGlow = !neonGlow;
-    setNeonGlow(newNeonGlow);
-    if (logo) {
-      onBrandUpdate({
-        logo,
-        brandColor,
-        neonGlow: newNeonGlow,
-        position
-      });
-    }
+    const nextNeonGlow = !neonGlow;
+    setNeonGlow(nextNeonGlow);
+    pushUpdate({ logo, brandColor, neonGlow: nextNeonGlow, position });
   };
 
   const handlePositionChange = (newPosition) => {
     setPosition(newPosition);
-    if (logo) {
-      onBrandUpdate({
-        logo,
-        brandColor,
-        neonGlow,
-        position: newPosition
-      });
-    }
+    pushUpdate({ logo, brandColor, neonGlow, position: newPosition });
   };
 
   const presetColors = [
@@ -67,7 +74,7 @@ export default function BrandKit({ onBrandUpdate }) {
     { name: 'Neon Green', value: '#00FF88' },
     { name: 'Cyber Red', value: '#FF006E' },
     { name: 'Solar Orange', value: '#FF6B00' },
-    { name: 'Custom', value: 'custom' }
+    { name: 'Custom', value: 'custom' },
   ];
 
   const positions = [
@@ -75,8 +82,13 @@ export default function BrandKit({ onBrandUpdate }) {
     { value: 'top-right', label: '↗ Top Right' },
     { value: 'bottom-left', label: '↙ Bottom Left' },
     { value: 'bottom-right', label: '↘ Bottom Right' },
-    { value: 'center', label: '⊙ Center' }
+    { value: 'center', label: '⊙ Center' },
   ];
+
+  const isPresetActive = (presetValue) => {
+    if (presetValue === 'custom') return showCustomColor;
+    return !showCustomColor && brandColor === presetValue;
+  };
 
   return (
     <div className="brand-kit">
@@ -86,7 +98,6 @@ export default function BrandKit({ onBrandUpdate }) {
       </div>
 
       <div className="brand-kit-content">
-        {/* Logo Upload */}
         <div className="brand-section">
           <label className="brand-label">Logo</label>
           <div className="logo-upload-area">
@@ -97,28 +108,37 @@ export default function BrandKit({ onBrandUpdate }) {
               onChange={handleLogoUpload}
               style={{ display: 'none' }}
             />
-            
+
             {logo ? (
               <div className="logo-preview">
                 <img src={logo} alt="Brand logo" />
-                <button 
+                <button
+                  type="button"
                   className="remove-logo-btn"
                   onClick={() => {
                     setLogo(null);
-                    onBrandUpdate(null);
+                    pushUpdate({ logo: null, brandColor, neonGlow, position });
                   }}
                 >
                   ✕
                 </button>
               </div>
             ) : (
-              <div 
+              <div
                 className="upload-placeholder"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                role="button"
+                tabIndex={0}
               >
                 <div className="upload-icon">📁</div>
                 <div className="upload-text">
-                  Click to upload logo<br />
+                  Click to upload logo
+                  <br />
                   <small>PNG, JPG recommended</small>
                 </div>
               </div>
@@ -126,20 +146,27 @@ export default function BrandKit({ onBrandUpdate }) {
           </div>
         </div>
 
-        {/* Brand Color */}
         <div className="brand-section">
           <label className="brand-label">Brand Color</label>
           <div className="color-presets">
             {presetColors.map((preset) => (
               <button
                 key={preset.value}
-                className={`color-preset ${brandColor === preset.value ? 'active' : ''}`}
-                style={{ 
-                  backgroundColor: preset.value !== 'custom' ? preset.value : brandColor,
-                  border: preset.value === 'custom' ? '2px dashed var(--border)' : 'none'
+                type="button"
+                className={`color-preset ${isPresetActive(preset.value) ? 'active' : ''}`}
+                style={{
+                  backgroundColor:
+                    preset.value !== 'custom' ? preset.value : brandColor,
+                  border:
+                    preset.value === 'custom'
+                      ? '2px dashed var(--border)'
+                      : 'none',
                 }}
                 onClick={() => {
-                  if (preset.value !== 'custom') {
+                  if (preset.value === 'custom') {
+                    setShowCustomColor(true);
+                  } else {
+                    setShowCustomColor(false);
                     handleColorChange(preset.value);
                   }
                 }}
@@ -149,7 +176,7 @@ export default function BrandKit({ onBrandUpdate }) {
               </button>
             ))}
           </div>
-          {brandColor === 'custom' && (
+          {showCustomColor && (
             <input
               type="color"
               value={brandColor}
@@ -159,13 +186,13 @@ export default function BrandKit({ onBrandUpdate }) {
           )}
         </div>
 
-        {/* Position */}
         <div className="brand-section">
           <label className="brand-label">Position</label>
           <div className="position-grid">
             {positions.map((pos) => (
               <button
                 key={pos.value}
+                type="button"
                 className={`position-btn ${position === pos.value ? 'active' : ''}`}
                 onClick={() => handlePositionChange(pos.value)}
               >
@@ -175,7 +202,6 @@ export default function BrandKit({ onBrandUpdate }) {
           </div>
         </div>
 
-        {/* Neon Glow Effect */}
         <div className="brand-section">
           <label className="brand-label">Effects</label>
           <div className="effect-controls">
@@ -185,16 +211,16 @@ export default function BrandKit({ onBrandUpdate }) {
                 checked={neonGlow}
                 onChange={handleNeonGlowToggle}
               />
-              <span className="toggle-slider"></span>
+              <span className="toggle-slider" />
               <span className="toggle-label">Kinetic Glow</span>
             </label>
             <p className="effect-description">
-              Apply a subtle purple-tinted color filter matching Kinetic's aesthetic
+              Apply a subtle purple-tinted color filter matching Kinetic&apos;s
+              aesthetic (works in preview even without a logo)
             </p>
           </div>
         </div>
 
-        {/* Preview */}
         {logo && (
           <div className="brand-section">
             <label className="brand-label">Preview</label>
@@ -202,14 +228,21 @@ export default function BrandKit({ onBrandUpdate }) {
               <div className="preview-video">
                 <div className="preview-content">
                   <span className="preview-text">Your video preview</span>
-                  <div 
+                  <div
                     className="preview-logo"
                     style={{
-                      [position]: '20px',
-                      filter: neonGlow ? `drop-shadow(0 0 10px ${brandColor})` : 'none'
+                      ...(BRAND_PREVIEW_POSITIONS[position] ||
+                        BRAND_PREVIEW_POSITIONS['bottom-right']),
+                      filter: neonGlow
+                        ? `drop-shadow(0 0 10px ${brandColor})`
+                        : 'none',
                     }}
                   >
-                    <img src={logo} alt="Logo preview" style={{ maxWidth: '80px', maxHeight: '40px' }} />
+                    <img
+                      src={logo}
+                      alt="Logo preview"
+                      style={{ maxWidth: '80px', maxHeight: '40px' }}
+                    />
                   </div>
                 </div>
               </div>

@@ -2,9 +2,9 @@ import { useState, useRef } from 'react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
-const BASE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+const CORE_VERSION = '0.12.10';
+const CORE_MT_BASE = `https://unpkg.com/@ffmpeg/core-mt@${CORE_VERSION}/dist/esm`;
 
-// Single shared instance — never recreated
 const ffmpegInstance = new FFmpeg();
 
 export function useFFmpeg() {
@@ -22,8 +22,18 @@ export function useFFmpeg() {
 
     try {
       await ffmpegInstance.load({
-        coreURL: await toBlobURL(`${BASE_URL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${BASE_URL}/ffmpeg-core.wasm`, 'application/wasm'),
+        coreURL: await toBlobURL(
+          `${CORE_MT_BASE}/ffmpeg-core.js`,
+          'text/javascript'
+        ),
+        wasmURL: await toBlobURL(
+          `${CORE_MT_BASE}/ffmpeg-core.wasm`,
+          'application/wasm'
+        ),
+        workerURL: await toBlobURL(
+          `${CORE_MT_BASE}/ffmpeg-core.worker.js`,
+          'text/javascript'
+        ),
       });
       setLoaded(true);
     } finally {

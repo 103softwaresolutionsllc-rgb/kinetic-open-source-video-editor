@@ -6,7 +6,8 @@ const RUNTIME_CACHE = 'kinetic-runtime-v1.0.0';
 const STATIC_FILES = [
   '/',
   '/index.html',
-  '/manifest.json',
+  '/site.webmanifest',
+  '/fonts/Roboto-Regular.ttf',
   '/assets/kinetic-logo.png',
   '/assets/kinetic-poster-logo.png',
   '/assets/favicon.ico',
@@ -14,7 +15,7 @@ const STATIC_FILES = [
   '/assets/favicon-32x32.png',
   '/assets/apple-touch-icon.png',
   '/assets/android-chrome-192x192.png',
-  '/assets/android-chrome-512x512.png'
+  '/assets/android-chrome-512x512.png',
 ];
 
 // FFmpeg core files for offline processing

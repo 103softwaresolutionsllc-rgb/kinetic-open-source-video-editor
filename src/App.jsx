@@ -11,7 +11,7 @@ function AppShell() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
   const [showBrandKit, setShowBrandKit] = useState(false);
-  const { actions, ffmpegLoaded, setBrandSettings } = useEditor();
+  const { actions, ffmpegLoaded, brandSettings, setBrandSettings } = useEditor();
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('kinetic-theme') || 'dark';
@@ -197,6 +197,15 @@ function AppShell() {
                   <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addAudio?.(); }}>
                     🎵 Add Audio
                   </a>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.saveProject?.(); }}>
+                    💾 Save Project
+                  </a>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.downloadProject?.(); }}>
+                    📥 Export Project File
+                  </a>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.importProject?.(); }}>
+                    📂 Import Project File
+                  </a>
                   <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.preloadFFmpeg?.(); }}>
                     ⚡ Preload FFmpeg
                   </a>
@@ -252,7 +261,10 @@ function AppShell() {
                 <div className="brand-kit-overlay" onClick={handleBrandKitClose} />
                 <div className="brand-kit-content">
                   <button className="close-button" onClick={handleBrandKitClose}>✕</button>
-                  <BrandKit onBrandUpdate={setBrandSettings} />
+                  <BrandKit
+                    initialSettings={brandSettings}
+                    onBrandUpdate={setBrandSettings}
+                  />
                 </div>
               </div>
             )}

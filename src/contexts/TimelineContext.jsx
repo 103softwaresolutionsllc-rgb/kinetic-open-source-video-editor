@@ -15,6 +15,8 @@ export const initialTimelineState = {
       type: 'video',
       clips: [],
       zIndex: 2,
+      muted: false,
+      solo: false,
     },
     {
       id: AUDIO_LAYER_ID,
@@ -22,6 +24,8 @@ export const initialTimelineState = {
       type: 'audio',
       clips: [],
       zIndex: 1,
+      muted: false,
+      solo: false,
     },
   ],
   currentTime: 0,
@@ -46,8 +50,10 @@ const ActionTypes = {
   ADD_LAYER: 'ADD_LAYER',
   REMOVE_LAYER: 'REMOVE_LAYER',
   CLEAR_PROJECT: 'CLEAR_PROJECT',
+  LOAD_PROJECT: 'LOAD_PROJECT',
   SPLIT_CLIP: 'SPLIT_CLIP',
   DUPLICATE_CLIP: 'DUPLICATE_CLIP',
+  UPDATE_LAYER: 'UPDATE_LAYER',
 };
 
 function packLayerClips(clips) {
@@ -224,6 +230,16 @@ function timelineReducer(state, action) {
         isPlaying: action.payload.isPlaying,
       };
 
+    case ActionTypes.UPDATE_LAYER: {
+      const { layerId, updates } = action.payload;
+      return {
+        ...state,
+        layers: state.layers.map((layer) =>
+          layer.id === layerId ? { ...layer, ...updates } : layer
+        ),
+      };
+    }
+
     case ActionTypes.ADD_LAYER:
       return {
         ...state,
@@ -235,17 +251,24 @@ function timelineReducer(state, action) {
             type: action.payload.type,
             clips: [],
             zIndex: state.layers.length + 1,
+            muted: false,
+            solo: false,
           },
         ],
       };
 
-    case ActionTypes.REMOVE_LAYER:
+    case ActionTypes.REMOVE_LAYER: {
+      const { layerId } = action.payload;
+      const removedLayer = state.layers.find((layer) => layer.id === layerId);
+      if (!removedLayer || removedLayer.clips.length > 0) return state;
+
       return {
         ...state,
-        layers: state.layers.filter(
-          (layer) => layer.id !== action.payload.layerId
-        ),
+        layers: state.layers.filter((layer) => layer.id !== layerId),
+        selectedLayer:
+          state.selectedLayer === layerId ? null : state.selectedLayer,
       };
+    }
 
     case ActionTypes.SPLIT_CLIP: {
       const { layerId, clipId, splitTime } = action.payload;
@@ -323,6 +346,19 @@ function timelineReducer(state, action) {
 
     case ActionTypes.CLEAR_PROJECT:
       return { ...initialTimelineState };
+
+    case ActionTypes.LOAD_PROJECT: {
+      const { layers, currentTime = 0, duration = 60 } = action.payload;
+      return {
+        ...state,
+        layers,
+        currentTime,
+        duration,
+        selectedClip: null,
+        selectedLayer: null,
+        isPlaying: false,
+      };
+    }
 
     default:
       return state;
@@ -407,6 +443,13 @@ export function TimelineProvider({ children }) {
     dispatch({ type: ActionTypes.REMOVE_LAYER, payload: { layerId } });
   }, []);
 
+  const updateLayer = useCallback((layerId, updates) => {
+    dispatch({
+      type: ActionTypes.UPDATE_LAYER,
+      payload: { layerId, updates },
+    });
+  }, []);
+
   const splitClip = useCallback((layerId, clipId, splitTime) => {
     dispatch({ type: ActionTypes.SPLIT_CLIP, payload: { layerId, clipId, splitTime } });
   }, []);
@@ -417,6 +460,13 @@ export function TimelineProvider({ children }) {
 
   const clearProject = useCallback(() => {
     dispatch({ type: ActionTypes.CLEAR_PROJECT });
+  }, []);
+
+  const loadProject = useCallback((project) => {
+    dispatch({
+      type: ActionTypes.LOAD_PROJECT,
+      payload: project,
+    });
   }, []);
 
   const value = {
@@ -434,9 +484,11 @@ export function TimelineProvider({ children }) {
     setPlaying,
     addLayer,
     removeLayer,
+    updateLayer,
     splitClip,
     duplicateClip,
     clearProject,
+    loadProject,
   };
 
   return (

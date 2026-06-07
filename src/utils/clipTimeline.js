@@ -21,16 +21,33 @@ export function getLayerClips(layers, layerId) {
   return layers.find((l) => l.id === layerId)?.clips ?? [];
 }
 
-export function getOrderedVideoClips(layers) {
-  return getLayerClips(layers, VIDEO_LAYER_ID)
+export function getClipsForLayerType(layers, type) {
+  return layers
+    .filter((layer) => layer.type === type)
+    .flatMap((layer) => layer.clips)
     .slice()
     .sort((a, b) => (a.timelineStart ?? 0) - (b.timelineStart ?? 0));
 }
 
+export function getOrderedVideoClips(layers) {
+  return getClipsForLayerType(layers, 'video');
+}
+
 export function getOrderedAudioClips(layers) {
-  return getLayerClips(layers, AUDIO_LAYER_ID)
-    .slice()
-    .sort((a, b) => (a.timelineStart ?? 0) - (b.timelineStart ?? 0));
+  return getClipsForLayerType(layers, 'audio');
+}
+
+export function findLayerForClip(layers, clipId) {
+  if (!clipId) return null;
+  return layers.find((layer) => layer.clips.some((clip) => clip.id === clipId)) ?? null;
+}
+
+export function isRemovableLayer(layer) {
+  return (
+    layer.id !== VIDEO_LAYER_ID &&
+    layer.id !== AUDIO_LAYER_ID &&
+    layer.clips.length === 0
+  );
 }
 
 export function projectDuration(layers) {
@@ -83,19 +100,22 @@ export function findClipAtTime(clips, time) {
   };
 }
 
+function findClipHitOnLayers(layers, type, time) {
+  for (const layer of layers.filter((l) => l.type === type)) {
+    const hit = findClipAtTime(layer.clips, time);
+    if (hit && hit.localTime < clipTrimmedDuration(hit.clip) - 0.02) {
+      return { ...hit, layerId: layer.id };
+    }
+  }
+  return null;
+}
+
 /** Prefer video at playhead, then audio */
 export function findClipAtTimeOnProject(layers, time) {
-  const videoHit = findClipAtTime(getOrderedVideoClips(layers), time);
-  if (videoHit) {
-    return { ...videoHit, layerId: VIDEO_LAYER_ID };
-  }
-
-  const audioHit = findClipAtTime(getOrderedAudioClips(layers), time);
-  if (audioHit) {
-    return { ...audioHit, layerId: AUDIO_LAYER_ID };
-  }
-
-  return null;
+  return (
+    findClipHitOnLayers(layers, 'video', time) ||
+    findClipHitOnLayers(layers, 'audio', time)
+  );
 }
 
 export function makeClipDragId(layerId, clipId) {
@@ -116,6 +136,53 @@ export function isAudioFile(file) {
 export function isVideoFile(file) {
   if (file.type.startsWith('video/')) return true;
   return /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(file.name);
+}
+
+export function getNextClipInSequence(clips, clipId) {
+  const sorted = [...clips].sort(
+    (a, b) => (a.timelineStart ?? 0) - (b.timelineStart ?? 0)
+  );
+  const idx = sorted.findIndex((c) => c.id === clipId);
+  if (idx < 0 || idx >= sorted.length - 1) return null;
+  return sorted[idx + 1];
+}
+
+/** Clip at playhead, or the next clip if playhead is in a gap or past clip end */
+export function findClipAtOrAfterTime(clips, time) {
+  const sorted = [...clips].sort(
+    (a, b) => (a.timelineStart ?? 0) - (b.timelineStart ?? 0)
+  );
+
+  if (!sorted.length) return null;
+
+  const hit = findClipAtTime(clips, time);
+  if (hit && hit.localTime < clipTrimmedDuration(hit.clip) - 0.02) {
+    return hit;
+  }
+
+  for (let i = 0; i < sorted.length; i++) {
+    const clip = sorted[i];
+    const start = clip.timelineStart ?? 0;
+    if (start >= time - 0.02) {
+      return {
+        index: clips.findIndex((c) => c.id === clip.id),
+        sortedIndex: i,
+        clip,
+        localTime: 0,
+        timelineStart: start,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function getActiveAudioClipsAtTime(audioClips, time) {
+  return audioClips.filter((clip) => {
+    const start = clip.timelineStart ?? 0;
+    const end = start + clipTrimmedDuration(clip);
+    return time >= start && time < end;
+  });
 }
 
 export function findClipById(layers, clipId) {

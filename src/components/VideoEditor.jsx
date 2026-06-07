@@ -11,21 +11,44 @@ import {
   clipTrimmedDuration,
   findClipAtTimeOnProject,
   findClipById,
+  findLayerForClip,
   getOrderedVideoClips,
   getOrderedAudioClips,
   projectDuration,
   isAudioFile,
   isVideoFile,
 } from '../utils/clipTimeline.js';
-import { applyBrandToVideo, buildFadeFilters } from '../utils/exportBranding.js';
+import {
+  applyBrandToVideo,
+  brandSettingsAffectExport,
+  buildFadeFilters,
+} from '../utils/exportBranding.js';
+import { buildEffectFilters } from '../utils/videoEffects.js';
 import { mixAudioTrackIntoVideo } from '../utils/exportAudioMix.js';
+import {
+  filterExportAudioClips,
+  shouldEncodeClipAudio,
+} from '../utils/audioExportFilters.js';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
+import {
+  buildClipPreview,
+  generateWaveformPreview,
+} from '../utils/clipThumbnails.js';
+import { useSequencePlayback } from '../hooks/useSequencePlayback.js';
+import {
+  saveProjectToStorage,
+  loadProjectFromStorage,
+  clearProjectStorage,
+  exportProjectFile,
+  importProjectFile,
+} from '../services/ProjectStorage.js';
 
 // Integrated components
 import AudioMixer from './AudioMixer.jsx';
+import PreviewCompositor from './PreviewCompositor.jsx';
 import CropTool from './CropTool.jsx';
 import ExportPresets from './ExportPresets.jsx';
 import TextOverlay from './TextOverlay.jsx';
-import InteractiveTimeline from './InteractiveTimeline.jsx';
 
 function fmt(s) {
   if (s == null || isNaN(s)) return '0:00.0';
@@ -40,6 +63,9 @@ export default function VideoEditor() {
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
   const audioFileInputRef = useRef(null);
+  const projectFileInputRef = useRef(null);
+  const autosaveTimerRef = useRef(null);
+  const projectRestoredRef = useRef(false);
   const wavesurferRef = useRef(null);
   const wsReadyRef = useRef(false);
   const previewIsAudioRef = useRef(false);
@@ -50,12 +76,11 @@ export default function VideoEditor() {
   const [textOverlays, setTextOverlays] = useState([]);
   const [cropClip, setCropClip] = useState(null);
   const [cropImage, setCropImage] = useState(null);
-  const [timelineMode, setTimelineMode] = useState('simple');
   const [exportProgressLocal, setExportProgressLocal] = useState(0);
   const [isExportingLocal, setIsExportingLocal] = useState(false);
 
   const { ffmpeg, fetchFile, loaded, progress, load } = useFFmpeg();
-  const { registerActions, setFFmpegLoaded, brandSettings } = useEditor();
+  const { registerActions, setFFmpegLoaded, brandSettings, setBrandSettings } = useEditor();
   const {
     layers,
     currentTime,
@@ -72,6 +97,8 @@ export default function VideoEditor() {
     splitClip,
     duplicateClip,
     clearProject: clearTimeline,
+    loadProject,
+    duration,
   } = useTimeline();
 
   const videoClips = useMemo(
@@ -84,12 +111,42 @@ export default function VideoEditor() {
     [layers]
   );
 
-  const selectedClipIndex = useMemo(
-    () => videoClips.findIndex((c) => c.id === selectedClip),
-    [videoClips, selectedClip]
-  );
+
+  const selectedVideoClip = useMemo(() => {
+    if (!selectedClip) return null;
+    const layer = findLayerForClip(layers, selectedClip);
+    if (layer?.type !== 'video') return null;
+    return layer.clips.find((c) => c.id === selectedClip) ?? null;
+  }, [selectedClip, layers]);
 
   const hasContent = videoClips.length > 0 || audioClips.length > 0;
+
+  const updateClipById = useCallback(
+    (clipId, updates) => {
+      const layer = findLayerForClip(layers, clipId);
+      if (!layer) return;
+      updateClip(layer.id, clipId, updates);
+    },
+    [layers, updateClip]
+  );
+
+  const previewVideoClip = useMemo(() => {
+    if (previewClipId) {
+      return videoClips.find((c) => c.id === previewClipId) ?? null;
+    }
+    if (selectedClip && videoClips.some((c) => c.id === selectedClip)) {
+      return videoClips.find((c) => c.id === selectedClip) ?? null;
+    }
+    return null;
+  }, [previewClipId, selectedClip, videoClips]);
+
+  const previewIsAudio = useMemo(
+    () =>
+      Boolean(
+        previewClipId && audioClips.some((c) => c.id === previewClipId)
+      ),
+    [previewClipId, audioClips]
+  );
 
   useEffect(() => {
     setDuration(Math.max(projectDuration(layers), 60));
@@ -208,41 +265,168 @@ export default function VideoEditor() {
     (clipId, layerId) => {
       const found = findClipById(layers, clipId);
       if (found) {
+        selectClip(clipId, layerId);
         previewClip(found.clip, clipId, layerId);
       }
     },
-    [layers]
+    [layers, selectClip]
   );
 
   const handleFadeChange = useCallback(
-    (clipIndex, field, value) => {
-      const clip = videoClips[clipIndex];
-      if (!clip) return;
-      updateClip(VIDEO_LAYER_ID, clip.id, { [field]: value });
+    (clipId, field, value) => {
+      updateClipById(clipId, { [field]: value });
     },
-    [videoClips, updateClip]
+    [updateClipById]
   );
 
-  const handlePlayToggle = useCallback(
-    (playing) => {
-      setPlaying(playing);
+  const handleEffectChange = useCallback(
+    (clipId, field, value) => {
+      updateClipById(clipId, { [field]: value });
+    },
+    [updateClipById]
+  );
 
-      if (previewIsAudioRef.current) {
-        if (playing) wavesurferRef.current?.play();
-        else wavesurferRef.current?.pause();
-        return;
+  const {
+    handlePlayToggle,
+    stopSequence,
+    exitSequenceMode,
+  } = useSequencePlayback({
+    videoRef,
+    wavesurferRef,
+    wsReadyRef,
+    layers,
+    videoClips,
+    audioClips,
+    currentTime,
+    previewClipId,
+    setPreviewClipId,
+    setCurrentTime,
+    setPlaying,
+    selectClip,
+    previewIsAudioRef,
+  });
+
+  const backfillClipPreviews = useCallback(
+    async (loadedLayers) => {
+      for (const layer of loadedLayers) {
+        for (const clip of layer.clips) {
+          if (!clip.url) continue;
+
+          const needsVideoThumb =
+            clip.type === 'video' && !clip.thumbnail;
+          const needsAudioWave =
+            clip.type === 'audio' && !clip.waveform?.length;
+
+          if (!needsVideoThumb && !needsAudioWave) continue;
+
+          const preview = await buildClipPreview(
+            clip.url,
+            clip.type,
+            clip.sourceStart ?? 0
+          );
+
+          const updates = {};
+          if (needsVideoThumb && preview.thumbnail) {
+            updates.thumbnail = preview.thumbnail;
+          }
+          if (needsAudioWave && preview.waveform) {
+            updates.waveform = preview.waveform;
+          }
+
+          if (Object.keys(updates).length) {
+            updateClip(layer.id, clip.id, updates);
+          }
+        }
+      }
+    },
+    [updateClip]
+  );
+
+  const applyLoadedProject = useCallback(
+    (project, statusMessage) => {
+      loadProject({
+        layers: project.layers,
+        currentTime: 0,
+        duration: Math.max(projectDuration(project.layers), 60),
+      });
+      setTextOverlays(project.textOverlays ?? []);
+      setBrandSettings(project.brandSettings ?? null);
+      setPreviewClipId(null);
+      previewIsAudioRef.current = false;
+      setMessage(statusMessage);
+
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      }
+      wavesurferRef.current?.empty();
+      wsReadyRef.current = false;
+
+      backfillClipPreviews(project.layers);
+    },
+    [loadProject, setBrandSettings, backfillClipPreviews]
+  );
+
+  const saveProject = useCallback(async () => {
+    try {
+      await saveProjectToStorage({ layers, textOverlays, brandSettings });
+      setMessage('💾 Project saved locally.');
+    } catch (err) {
+      console.error(err);
+      setMessage(`❌ Save failed: ${err.message}`);
+    }
+  }, [layers, textOverlays, brandSettings]);
+
+  const downloadProject = useCallback(async () => {
+    try {
+      await exportProjectFile({ layers, textOverlays, brandSettings });
+      setMessage('📥 Project file downloaded.');
+    } catch (err) {
+      console.error(err);
+      setMessage(`❌ Export failed: ${err.message}`);
+    }
+  }, [layers, textOverlays, brandSettings]);
+
+  const restoreProject = useCallback(async () => {
+    try {
+      const project = await loadProjectFromStorage();
+      if (!project) return false;
+      applyLoadedProject(project, `📂 Restored autosave from ${new Date(project.savedAt).toLocaleString()}`);
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }, [applyLoadedProject]);
+
+  const handleImportProject = useCallback(
+    async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      try {
+        const project = await importProjectFile(file);
+        applyLoadedProject(project, `📂 Loaded project: ${file.name}`);
+        await saveProjectToStorage({
+          layers: project.layers,
+          textOverlays: project.textOverlays,
+          brandSettings: project.brandSettings,
+        });
+      } catch (err) {
+        console.error(err);
+        setMessage(`❌ Import failed: ${err.message}`);
       }
 
-      const video = videoRef.current;
-      if (!video) return;
-      if (playing) video.play();
-      else video.pause();
+      e.target.value = '';
     },
-    [setPlaying]
+    [applyLoadedProject]
   );
 
-  const clearProject = useCallback(() => {
+  const clearProject = useCallback(async () => {
+    stopSequence();
     clearTimeline();
+    setTextOverlays([]);
     setPreviewClipId(null);
     previewIsAudioRef.current = false;
     setMessage('Project cleared.');
@@ -255,7 +439,35 @@ export default function VideoEditor() {
 
     wavesurferRef.current?.empty();
     wsReadyRef.current = false;
-  }, [clearTimeline]);
+
+    try {
+      await clearProjectStorage();
+    } catch (err) {
+      console.error(err);
+    }
+  }, [clearTimeline, stopSequence]);
+
+  useEffect(() => {
+    if (projectRestoredRef.current) return;
+    projectRestoredRef.current = true;
+    restoreProject();
+  }, [restoreProject]);
+
+  useEffect(() => {
+    if (!hasContent && textOverlays.length === 0 && !brandSettings) return;
+
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+
+    autosaveTimerRef.current = setTimeout(() => {
+      saveProjectToStorage({ layers, textOverlays, brandSettings }).catch(console.error);
+    }, 2000);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [layers, textOverlays, brandSettings, hasContent]);
 
   useEffect(() => {
     setFFmpegLoaded(loaded);
@@ -280,29 +492,57 @@ export default function VideoEditor() {
     });
   }
 
-  async function importMediaFiles(files, layerId, type) {
-    const isVideo = type === 'video';
+  const importMediaFiles = useCallback(
+    async (files, layerId, type) => {
+      const isVideo = type === 'video';
 
-    for (const f of files) {
-      const url = URL.createObjectURL(f);
-      const clipDuration = await probeMediaDuration(url, isVideo);
+      for (const f of files) {
+        const url = URL.createObjectURL(f);
+        const clipDuration = await probeMediaDuration(url, isVideo);
+        const preview = await buildClipPreview(url, type, 0);
 
-      addClip(layerId, {
-        id: crypto.randomUUID(),
-        file: f,
-        name: f.name,
-        url,
-        type,
-        duration: clipDuration,
-        sourceStart: 0,
-        sourceEnd: clipDuration,
-        fadeIn: 0,
-        fadeOut: 0,
-        volume: 1,
-        muted: false,
-      });
-    }
-  }
+        addClip(layerId, {
+          id: crypto.randomUUID(),
+          file: f,
+          name: f.name,
+          url,
+          type,
+          duration: clipDuration,
+          sourceStart: 0,
+          sourceEnd: clipDuration,
+          fadeIn: 0,
+          fadeOut: 0,
+          volume: 1,
+          muted: false,
+          thumbnail: preview.thumbnail,
+          waveform: preview.waveform,
+        });
+      }
+    },
+    [addClip]
+  );
+
+  const handleTimelineImport = useCallback(
+    async (files, layerId, layerType) => {
+      const list = Array.from(files);
+      const filtered = list.filter(
+        layerType === 'audio' ? isAudioFile : isVideoFile
+      );
+
+      if (!filtered.length) {
+        setMessage(
+          layerType === 'audio'
+            ? 'Drop audio files (MP3, WAV, etc.) on an audio track.'
+            : 'Drop video files (MP4, WebM, etc.) on a video track.'
+        );
+        return;
+      }
+
+      await importMediaFiles(filtered, layerId, layerType);
+      setMessage(`✅ Added ${filtered.length} ${layerType} clip(s) to timeline`);
+    },
+    [importMediaFiles]
+  );
 
   function handleFiles(e) {
     const files = Array.from(e.target.files).filter(isVideoFile);
@@ -316,15 +556,15 @@ export default function VideoEditor() {
     e.target.value = '';
   }
 
-  // ─────────────────────────────────────────────
-  // Clip range update
-  // ─────────────────────────────────────────────
-  function setClipRange(layerId, clipId, sourceStart, sourceEnd) {
-    updateClip(layerId, clipId, {
-      sourceStart: Number(sourceStart),
-      sourceEnd: sourceEnd === null ? null : Number(sourceEnd),
-    });
-  }
+  const setClipRangeById = useCallback(
+    (clipId, sourceStart, sourceEnd) => {
+      updateClipById(clipId, {
+        sourceStart: Number(sourceStart),
+        sourceEnd: sourceEnd === null ? null : Number(sourceEnd),
+      });
+    },
+    [updateClipById]
+  );
 
   const handleOpenCrop = useCallback((clip) => {
     const video = videoRef.current;
@@ -349,64 +589,78 @@ export default function VideoEditor() {
 
   const handleCropComplete = useCallback((cropData) => {
     if (cropClip) {
-      updateClip(VIDEO_LAYER_ID, cropClip.id, { crop: cropData.croppedAreaPixels });
+      updateClipById(cropClip.id, { crop: cropData.croppedAreaPixels });
       setMessage(`Applied crop to "${cropClip.name}"`);
     }
     setCropClip(null);
     setCropImage(null);
-  }, [cropClip, updateClip]);
+  }, [cropClip, updateClipById]);
 
   const audioTracksForMixer = useMemo(() => {
     return [
-      ...videoClips.map(c => ({
+      ...videoClips.map((c) => ({
         id: c.id,
         name: c.name,
         type: 'Video Audio',
+        url: c.url,
         volume: c.volume ?? 1,
         muted: c.muted ?? false,
-        solo: c.solo ?? false
+        solo: c.solo ?? false,
       })),
-      ...audioClips.map(c => ({
+      ...audioClips.map((c) => ({
         id: c.id,
         name: c.name,
         type: 'Audio Track',
+        url: c.url,
         volume: c.volume ?? 1,
         muted: c.muted ?? false,
-        solo: c.solo ?? false
-      }))
+        solo: c.solo ?? false,
+      })),
     ];
   }, [videoClips, audioClips]);
 
-  const handleVolumeChange = useCallback((id, volume) => {
-    const isVideo = videoClips.some(c => c.id === id);
-    updateClip(isVideo ? VIDEO_LAYER_ID : AUDIO_LAYER_ID, id, { volume });
-  }, [videoClips, updateClip]);
+  const handleVolumeChange = useCallback(
+    (id, volume) => {
+      updateClipById(id, { volume });
+    },
+    [updateClipById]
+  );
 
-  const handleMuteToggle = useCallback((id) => {
-    const isVideo = videoClips.some(c => c.id === id);
-    const clip = isVideo ? videoClips.find(c => c.id === id) : audioClips.find(c => c.id === id);
-    if (clip) {
-      updateClip(isVideo ? VIDEO_LAYER_ID : AUDIO_LAYER_ID, id, { muted: !clip.muted });
-    }
-  }, [videoClips, audioClips, updateClip]);
+  const handleMuteToggle = useCallback(
+    (id) => {
+      const found = findClipById(layers, id);
+      if (found) {
+        updateClipById(id, { muted: !found.clip.muted });
+      }
+    },
+    [layers, updateClipById]
+  );
 
-  const handleSoloToggle = useCallback((id) => {
-    const isVideo = videoClips.some(c => c.id === id);
-    const clip = isVideo ? videoClips.find(c => c.id === id) : audioClips.find(c => c.id === id);
-    if (clip) {
-      updateClip(isVideo ? VIDEO_LAYER_ID : AUDIO_LAYER_ID, id, { solo: !clip.solo });
-    }
-  }, [videoClips, audioClips, updateClip]);
+  const handleSoloToggle = useCallback(
+    (id) => {
+      const found = findClipById(layers, id);
+      if (found) {
+        updateClipById(id, { solo: !found.clip.solo });
+      }
+    },
+    [layers, updateClipById]
+  );
 
   const handleMuteAll = useCallback(() => {
-    videoClips.forEach(c => updateClip(VIDEO_LAYER_ID, c.id, { muted: true }));
-    audioClips.forEach(c => updateClip(AUDIO_LAYER_ID, c.id, { muted: true }));
-  }, [videoClips, audioClips, updateClip]);
+    layers.forEach((layer) => {
+      layer.clips.forEach((clip) => {
+        updateClip(layer.id, clip.id, { muted: true });
+      });
+    });
+  }, [layers, updateClip]);
 
   const handleSoloNone = useCallback(() => {
-    videoClips.forEach(c => updateClip(VIDEO_LAYER_ID, c.id, { solo: false }));
-    audioClips.forEach(c => updateClip(AUDIO_LAYER_ID, c.id, { solo: false }));
-  }, [videoClips, audioClips, updateClip]);
+    layers.forEach((layer) => {
+      layer.clips.forEach((clip) => {
+        updateClip(layer.id, clip.id, { solo: false });
+      });
+    });
+  }, [layers, updateClip]);
 
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
@@ -433,9 +687,12 @@ export default function VideoEditor() {
             
             const audioHelper = document.createElement('audio');
             audioHelper.src = url;
-            audioHelper.onloadedmetadata = () => {
+            audioHelper.onloadedmetadata = async () => {
+              const clipId = crypto.randomUUID();
+              const waveform = await generateWaveformPreview(url);
+
               addClip(AUDIO_LAYER_ID, {
-                id: crypto.randomUUID(),
+                id: clipId,
                 file,
                 name: `Voiceover (${fmt(audioHelper.duration)})`,
                 url,
@@ -447,6 +704,7 @@ export default function VideoEditor() {
                 fadeOut: 0,
                 volume: 1,
                 muted: false,
+                waveform,
               });
               setMessage('🎤 Voiceover added to audio track!');
             };
@@ -478,15 +736,23 @@ export default function VideoEditor() {
     setMessage('🗑️ Text overlay removed.');
   }, []);
 
-  function removeClipById(layerId, clipId) {
-    removeClip(layerId, clipId);
-    if (previewClipId === clipId) {
-      setPreviewClipId(null);
-      previewIsAudioRef.current = false;
-    }
-  }
+  const removeClipById = useCallback(
+    (clipId) => {
+      const layer = findLayerForClip(layers, clipId);
+      if (!layer) return;
+      removeClip(layer.id, clipId);
+      if (previewClipId === clipId) {
+        setPreviewClipId(null);
+        previewIsAudioRef.current = false;
+      }
+    },
+    [layers, removeClip, previewClipId]
+  );
 
   function previewClip(clip, clipId, layerId) {
+    exitSequenceMode();
+    setPlaying(false);
+
     if (clipId != null && layerId) {
       setPreviewClipId(clipId);
       selectClip(clipId, layerId);
@@ -589,19 +855,28 @@ export default function VideoEditor() {
           videoFilters.push(`crop=${Math.round(clip.crop.width)}:${Math.round(clip.crop.height)}:${Math.round(clip.crop.x)}:${Math.round(clip.crop.y)}`);
         }
 
+        videoFilters.push(...buildEffectFilters(clip));
+
         // Standardize output resolution to match preset (preserve aspect with padding)
         videoFilters.push(`scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
         videoFilters.push(`fps=${fps}`);
+
+        const includeAudio = shouldEncodeClipAudio(clip, layers);
+        const afChain = [...audioFilters];
+        const vol = clip.volume ?? 1;
+        if (includeAudio && vol !== 1) {
+          afChain.push(`volume=${vol}`);
+        }
 
         await ffmpeg.exec([
           '-ss', `${start}`,
           '-i', inName,
           ...(dur ? ['-t', `${dur}`] : []),
           ...(videoFilters.length ? ['-vf', videoFilters.join(',')] : []),
-          ...(audioFilters.length ? ['-af', audioFilters.join(',')] : []),
+          ...(includeAudio && afChain.length ? ['-af', afChain.join(',')] : []),
           '-c:v', 'libx264',
           '-preset', 'veryfast',
-          '-c:a', 'aac',
+          ...(includeAudio ? ['-c:a', 'aac'] : ['-an']),
           segName,
         ]);
 
@@ -643,7 +918,7 @@ export default function VideoEditor() {
       if (textOverlays.length > 0) {
         setMessage('Applying text overlays…');
         try {
-          const fontResponse = await fetch('https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/Roboto-Regular.ttf');
+          const fontResponse = await fetch('/fonts/Roboto-Regular.ttf');
           const fontBuffer = await fontResponse.arrayBuffer();
           await ffmpeg.writeFile('Roboto.ttf', new Uint8Array(fontBuffer));
 
@@ -674,7 +949,7 @@ export default function VideoEditor() {
       // ─────────────────────────────────────────────
       // Apply Brand Kit
       // ─────────────────────────────────────────────
-      if (brandSettings?.logo) {
+      if (brandSettingsAffectExport(brandSettings)) {
         setMessage('Applying brand kit…');
         outputFile = await applyBrandToVideo(
           ffmpeg,
@@ -693,7 +968,8 @@ export default function VideoEditor() {
           ffmpeg,
           fetchFile,
           outputFile,
-          audioClips
+          audioClips,
+          layers
         );
       }
 
@@ -748,11 +1024,17 @@ export default function VideoEditor() {
   // Export MP3
   // ─────────────────────────────────────────────
   async function exportAudio() {
-    const exportClips =
-      audioClips.length > 0 ? audioClips : videoClips;
+    const sourceClips = audioClips.length > 0 ? audioClips : videoClips;
+
+    if (sourceClips.length === 0) {
+      alert('Add at least one video or audio clip first.');
+      return;
+    }
+
+    const exportClips = filterExportAudioClips(sourceClips, layers);
 
     if (exportClips.length === 0) {
-      alert('Add at least one video or audio clip first.');
+      alert('All audio tracks are muted or solo-disabled.');
       return;
     }
 
@@ -821,6 +1103,9 @@ export default function VideoEditor() {
       addAudio: () => audioFileInputRef.current?.click(),
       preloadFFmpeg: () =>
         load().then(() => setMessage('✅ FFmpeg ready!')),
+      saveProject,
+      downloadProject,
+      importProject: () => projectFileInputRef.current?.click(),
       clearProject,
       exportVideo,
       exportAudio,
@@ -832,41 +1117,38 @@ export default function VideoEditor() {
     hasContent,
     registerActions,
     clearProject,
+    saveProject,
+    downloadProject,
     brandSettings,
   ]);
 
-  const customTimelineEngine = useMemo(() => {
-    return {
-      current: {
-        splitClip: (trackId, clipId, splitTime) => {
-          splitClip(trackId, clipId, splitTime);
-          return true;
-        },
-        addClip: (trackId, clip) => {
-          addClip(trackId, {
-            ...clip,
-            id: crypto.randomUUID(),
-            sourceStart: clip.sourceStart ?? 0,
-            sourceEnd: clip.sourceEnd ?? clip.duration,
-            volume: clip.volume ?? 1,
-            muted: clip.muted ?? false,
-          });
-          return true;
-        }
-      }
-    };
-  }, [splitClip, addClip]);
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedClip || !selectedLayer) return;
+    removeClipById(selectedClip);
+  }, [selectedClip, selectedLayer, removeClipById]);
 
-  const mappedTracks = useMemo(() => {
-    return layers.map(layer => ({
-      ...layer,
-      clips: layer.clips.map(clip => ({
-        ...clip,
-        startTime: clip.timelineStart ?? 0,
-        duration: clipTrimmedDuration(clip)
-      }))
-    }));
-  }, [layers]);
+  useKeyboardShortcuts(
+    {
+      onPlayPause: () => handlePlayToggle(!isPlaying),
+      onSave: saveProject,
+      onOpen: () => projectFileInputRef.current?.click(),
+      onDelete: handleDeleteSelected,
+      onDuplicate: () => {
+        if (selectedClip && selectedLayer) {
+          duplicateClip(selectedLayer, selectedClip);
+        }
+      },
+      onSplit: () => {
+        if (selectedClip && selectedLayer) {
+          splitClip(selectedLayer, selectedClip, currentTime);
+        }
+      },
+      onSeekBack: () => handleTimelineSeek(Math.max(0, currentTime - 1)),
+      onSeekForward: () =>
+        handleTimelineSeek(Math.min(duration, currentTime + 1)),
+    },
+    true
+  );
 
   // ─────────────────────────────────────────────
   // Render
@@ -895,6 +1177,25 @@ export default function VideoEditor() {
             accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac"
             multiple
             onChange={handleAudioFiles}
+          />
+        </label>
+
+        <button type="button" className="secondary" onClick={saveProject}>
+          💾 Save
+        </button>
+
+        <button type="button" className="secondary" onClick={downloadProject}>
+          📥 Export Project
+        </button>
+
+        <label className="file-label secondary">
+          📂 Open Project
+          <input
+            ref={projectFileInputRef}
+            className="file-input"
+            type="file"
+            accept=".json,.kinetic.json,application/json"
+            onChange={handleImportProject}
           />
         </label>
 
@@ -936,73 +1237,41 @@ export default function VideoEditor() {
 
       <div className="editor-body">
         <div className="preview-column">
-          <div style={{ position: 'relative', width: '100%' }}>
-            <video
-              ref={videoRef}
-              className={`editor-preview ${
-                videoClips.length > 0 && selectedClip !== null
-                  ? 'playing'
-                  : ''
-              }`}
-              controls={false}
-            />
-
-            {/* Real-time styled text overlays layered on preview */}
-            {textOverlays.map((text) => {
-              const isVisible = currentTime >= text.startTime && currentTime <= (text.startTime + text.duration);
-              if (!isVisible) return null;
-              return (
-                <div
-                  key={text.id}
-                  style={{
-                    position: 'absolute',
-                    left: `${text.position.x}%`,
-                    top: `${text.position.y}%`,
-                    transform: 'translate(-50%, -50%)',
-                    color: text.color,
-                    fontSize: `${text.fontSize * 0.4}px`, // scaled for preview
-                    fontFamily: text.fontFamily,
-                    fontStyle: text.fontFamily === 'Impact' ? 'normal' : 'inherit',
-                    fontWeight: text.fontFamily === 'Impact' ? 'bold' : 'normal',
-                    pointerEvents: 'none',
-                    textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-                    zIndex: 10,
-                    whiteSpace: 'pre-wrap',
-                    textAlign: 'center'
-                  }}
-                >
-                  {text.text}
-                </div>
-              );
-            })}
-
+          <PreviewCompositor
+            videoRef={videoRef}
+            videoClip={previewVideoClip}
+            textOverlays={textOverlays}
+            brandSettings={brandSettings}
+            currentTime={currentTime}
+            isPlaying={isPlaying && !previewIsAudio}
+            isAudioPreview={previewIsAudio}
+          >
             <div className="playback-controls">
               <button
-                onClick={() => videoRef.current?.play()}
-                title="Play"
+                type="button"
+                onClick={() => handlePlayToggle(!isPlaying)}
+                title={isPlaying ? 'Pause' : 'Play sequence'}
               >
-                ▶
+                {isPlaying ? '⏸' : '▶'}
               </button>
 
               <button
-                onClick={() => videoRef.current?.pause()}
-                title="Pause"
-              >
-                ⏸
-              </button>
-
-              <button
+                type="button"
                 onClick={() => {
-                  if (videoRef.current) {
-                    videoRef.current.currentTime = 0;
+                  stopSequence();
+                  setCurrentTime(0);
+                  const first = videoClips[0] ?? audioClips[0];
+                  if (first) {
+                    const layer = videoClips[0] ? VIDEO_LAYER_ID : AUDIO_LAYER_ID;
+                    previewClip(first, first.id, layer);
                   }
                 }}
-                title="Stop"
+                title="Stop and rewind"
               >
                 ⏹
               </button>
             </div>
-          </div>
+          </PreviewCompositor>
 
           <div
             id="waveform"
@@ -1133,12 +1402,24 @@ export default function VideoEditor() {
                   <p className="muted">No video clips — use Add Videos above.</p>
                 )}
 
-                {videoClips.map((clip) => (
+                {videoClips.map((clip) => {
+                  const layerId = findLayerForClip(layers, clip.id)?.id;
+                  if (!layerId) return null;
+
+                  return (
                   <div
                     key={clip.id}
                     className={`clip-item${
                       selectedClip === clip.id ? ' selected' : ''
                     }`}
+                    onClick={() => selectClip(clip.id, layerId)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        selectClip(clip.id, layerId);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
                   >
                     <div className="clip-row">
                       <div
@@ -1150,14 +1431,20 @@ export default function VideoEditor() {
 
                       <div className="clip-actions">
                         <button
-                          onClick={() => previewClip(clip, clip.id, VIDEO_LAYER_ID)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            previewClip(clip, clip.id, layerId);
+                          }}
                         >
                           ▶ Preview
                         </button>
 
                         <button
                           className="danger"
-                          onClick={() => removeClipById(VIDEO_LAYER_ID, clip.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeClipById(clip.id);
+                          }}
                         >
                           ✕
                         </button>
@@ -1180,8 +1467,7 @@ export default function VideoEditor() {
                           step="0.1"
                           value={clip.sourceStart ?? 0}
                           onChange={(e) =>
-                            setClipRange(
-                              VIDEO_LAYER_ID,
+                            setClipRangeById(
                               clip.id,
                               e.target.value,
                               clip.sourceEnd
@@ -1205,8 +1491,7 @@ export default function VideoEditor() {
                           step="0.1"
                           value={clip.sourceEnd ?? clip.duration}
                           onChange={(e) =>
-                            setClipRange(
-                              VIDEO_LAYER_ID,
+                            setClipRangeById(
                               clip.id,
                               clip.sourceStart ?? 0,
                               e.target.value
@@ -1219,7 +1504,11 @@ export default function VideoEditor() {
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                         <button 
                           className="secondary small"
-                          onClick={() => handleOpenCrop(clip)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectClip(clip.id, layerId);
+                            handleOpenCrop(clip);
+                          }}
                           style={{ flex: 1, fontSize: '0.8rem', padding: '6px 12px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-primary)' }}
                         >
                           📐 Crop Frame
@@ -1237,7 +1526,8 @@ export default function VideoEditor() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
                 <h3 style={{ marginTop: 20 }}>
                   Audio{' '}
@@ -1250,12 +1540,24 @@ export default function VideoEditor() {
                   <p className="muted">No audio clips — use Add Audio above.</p>
                 )}
 
-                {audioClips.map((clip) => (
+                {audioClips.map((clip) => {
+                  const layerId = findLayerForClip(layers, clip.id)?.id;
+                  if (!layerId) return null;
+
+                  return (
                   <div
                     key={clip.id}
                     className={`clip-item${
                       selectedClip === clip.id ? ' selected' : ''
                     }`}
+                    onClick={() => selectClip(clip.id, layerId)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        selectClip(clip.id, layerId);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
                   >
                     <div className="clip-row">
                       <div className="clip-name" title={clip.name}>
@@ -1263,13 +1565,19 @@ export default function VideoEditor() {
                       </div>
                       <div className="clip-actions">
                         <button
-                          onClick={() => previewClip(clip, clip.id, AUDIO_LAYER_ID)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            previewClip(clip, clip.id, layerId);
+                          }}
                         >
                           ▶ Preview
                         </button>
                         <button
                           className="danger"
-                          onClick={() => removeClipById(AUDIO_LAYER_ID, clip.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeClipById(clip.id);
+                          }}
                         >
                           ✕
                         </button>
@@ -1291,8 +1599,7 @@ export default function VideoEditor() {
                           step="0.1"
                           value={clip.sourceStart ?? 0}
                           onChange={(e) =>
-                            setClipRange(
-                              AUDIO_LAYER_ID,
+                            setClipRangeById(
                               clip.id,
                               e.target.value,
                               clip.sourceEnd
@@ -1314,8 +1621,7 @@ export default function VideoEditor() {
                           step="0.1"
                           value={clip.sourceEnd ?? clip.duration}
                           onChange={(e) =>
-                            setClipRange(
-                              AUDIO_LAYER_ID,
+                            setClipRangeById(
                               clip.id,
                               clip.sourceStart ?? 0,
                               e.target.value
@@ -1337,7 +1643,7 @@ export default function VideoEditor() {
                           step="0.05"
                           value={clip.volume ?? 1}
                           onChange={(e) =>
-                            updateClip(AUDIO_LAYER_ID, clip.id, {
+                            updateClipById(clip.id, {
                               volume: Number(e.target.value),
                             })
                           }
@@ -1349,12 +1655,14 @@ export default function VideoEditor() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
                 <TransitionControls
-                  clips={videoClips}
-                  selectedClip={selectedClipIndex >= 0 ? selectedClipIndex : null}
+                  selectedClipId={selectedVideoClip?.id ?? null}
+                  clip={selectedVideoClip}
                   onFadeChange={handleFadeChange}
+                  onEffectChange={handleEffectChange}
                 />
               </>
             )}
@@ -1394,55 +1702,12 @@ export default function VideoEditor() {
         </aside>
       </div>
 
-      {/* Timeline Toggle Switcher */}
-      <div className="timeline-mode-toggle" style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px', gap: 12, borderTop: '1px solid var(--border)', background: 'var(--surface-secondary)', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Timeline Type:</span>
-        <button
-          onClick={() => setTimelineMode('simple')}
-          style={{
-            background: timelineMode === 'simple' ? 'var(--electric-purple)' : 'transparent',
-            color: 'white',
-            border: '1px solid var(--glass-border)',
-            borderRadius: '4px',
-            padding: '4px 10px',
-            cursor: 'pointer',
-            fontSize: '0.8rem'
-          }}
-        >
-          Simple (Drag & Drop)
-        </button>
-        <button
-          onClick={() => setTimelineMode('advanced')}
-          style={{
-            background: timelineMode === 'advanced' ? 'var(--electric-purple)' : 'transparent',
-            color: 'white',
-            border: '1px solid var(--glass-border)',
-            borderRadius: '4px',
-            padding: '4px 10px',
-            cursor: 'pointer',
-            fontSize: '0.8rem'
-          }}
-        >
-          Advanced (Clip Controls)
-        </button>
-      </div>
-
-      {timelineMode === 'simple' ? (
-        <MultiLayerTimeline
-          onSeek={handleTimelineSeek}
-          onClipSelect={handleClipSelect}
-          onPlayToggle={handlePlayToggle}
-        />
-      ) : (
-        <InteractiveTimeline
-          timelineEngine={customTimelineEngine}
-          onTimeChange={handleTimelineSeek}
-          onClipSelect={(clip) => handleClipSelect(clip.id, clip.type === 'video' ? VIDEO_LAYER_ID : AUDIO_LAYER_ID)}
-          currentTime={currentTime}
-          duration={duration}
-          tracks={mappedTracks}
-        />
-      )}
+      <MultiLayerTimeline
+        onSeek={handleTimelineSeek}
+        onClipSelect={handleClipSelect}
+        onPlayToggle={handlePlayToggle}
+        onImportFiles={handleTimelineImport}
+      />
 
       {/* Crop Tool Overlay Modal */}
       {cropClip && cropImage && (

@@ -1,4 +1,5 @@
 import { clipTrimmedDuration } from './clipTimeline.js';
+import { filterExportAudioClips } from './audioExportFilters.js';
 
 /**
  * Mix audio-track clips into an exported video file.
@@ -8,13 +9,16 @@ export async function mixAudioTrackIntoVideo(
   ffmpeg,
   fetchFile,
   videoPath,
-  audioClips
+  audioClips,
+  layers
 ) {
-  if (!audioClips?.length) {
+  const activeClips = filterExportAudioClips(audioClips, layers);
+
+  if (!activeClips.length) {
     return videoPath;
   }
 
-  const sorted = [...audioClips].sort(
+  const sorted = [...activeClips].sort(
     (a, b) => (a.timelineStart ?? 0) - (b.timelineStart ?? 0)
   );
 

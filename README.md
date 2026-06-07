@@ -18,7 +18,7 @@ Kinetic is a browser-based, non-linear video editor (NLE) built for speed, priva
 
 1. **Install:** Click "Install" to add Kinetic to your desktop for offline access.
 2. **Preload:** FFmpeg core loads automatically for instant processing.
-3. **Import:** Drag videos directly onto timeline tracks or use the upload panel.
+3. **Import:** Drag video/audio files onto timeline tracks, or use **Add Videos** / **Add Audio**.
 4. **Edit:** Arrange clips on multi-layer timeline, trim with visual waveforms.
 5. **Brand:** Add your logo and colors with one-click overlay system.
 6. **Export:** Render branded videos as MP4 or extract audio as MP3.
@@ -81,7 +81,15 @@ kinetic-open-source-video-editor/
 │   ├── contexts/
 │   │   └── TimelineContext.jsx    # Timeline state management
 │   ├── services/
-│   │   └── FFmpegService.jsx      # Enhanced FFmpeg operations
+│   │   └── ProjectStorage.js      # IndexedDB autosave + .kinetic.json projects
+│   ├── hooks/
+│   │   ├── useFFmpeg.js           # FFmpeg.wasm loader (core-mt)
+│   │   ├── useSequencePlayback.js # Multi-clip timeline playback
+│   │   └── useKeyboardShortcuts.js
+│   ├── utils/
+│   │   ├── exportBranding.js      # Logo + neon glow export
+│   │   ├── exportAudioMix.js      # Audio track mixing
+│   │   └── clipThumbnails.js      # Timeline thumbnail generation
 │   ├── App.jsx                     # Main application
 │   ├── main.jsx                   # Entry point
 │   └── styles.css                 # Neon Modular Aesthetic
@@ -186,22 +194,21 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🗺️ v1.0 Roadmap
 
 ### ✅ Completed (v1.0)
-- [x] **Multi-Layer Timeline** - Professional NLE with separate video/audio tracks
-- [x] **Drag-and-Drop System** - @dnd-kit integration for clip repositioning
-- [x] **Audio Extraction & Waveforms** - FFmpeg audio processing with visual feedback
-- [x] **One-Click Branding** - Logo overlay with Neon Glow effects
-- [x] **PWA Implementation** - Service worker for offline access and desktop installation
-- [x] **Multi-threaded Processing** - @ffmpeg/core-mt for performance optimization
-- [x] **Timeline State Management** - React Context API for professional workflows
-- [x] **Neon Modular Aesthetic** - Cyber Midnight theme with Electric Purple accents
-- [x] **Export System** - Branded MP4 and MP3 rendering
-- [x] **Privacy-First Architecture** - Zero server uploads with local processing
-
-### 🚧 In Progress
-- [ ] **Advanced Effects** - Transitions, filters, and color grading
-- [ ] **Multi-track Audio** - Separate audio channels
-- [ ] **Keyboard Shortcuts** - Professional editing workflows
-- [ ] **Project Saving** - Local project file format
+- [x] **Multi-Layer Timeline** — Video and audio tracks with add/remove layer controls
+- [x] **Drag-and-Drop** — Clip reordering plus file drop onto timeline tracks
+- [x] **Audio Extraction & Waveforms** — MP3 export, mixer waveforms, timeline clip previews
+- [x] **One-Click Branding** — Logo overlay and Kinetic Glow (preview + export, with or without logo)
+- [x] **PWA / Offline** — Web manifest + registered service worker for cached assets
+- [x] **Multi-threaded Processing** — `@ffmpeg/core-mt` for faster encoding
+- [x] **Timeline State** — `TimelineContext` with split, duplicate, mute/solo, resize
+- [x] **Live Preview Compositor** — Crop, text overlays, brand kit, effect presets
+- [x] **Sequential Playback** — Multi-clip timeline playhead with synced audio tracks
+- [x] **Advanced Effects** — Fade in/out, color presets, brightness/contrast/saturation
+- [x] **Project Save/Load** — IndexedDB autosave + `.kinetic.json` import/export
+- [x] **Keyboard Shortcuts** — Space, Ctrl+S/O, Delete, Ctrl+D, S, arrow seek
+- [x] **Export System** — MP4/MP3/GIF/WebM with presets, crop, text, and audio mix
+- [x] **Clip Thumbnails** — Video frame strips and audio waveform bars on timeline
+- [x] **Privacy-First** — All processing local; no uploads or accounts
 
 ### 📋 Planned (v1.1)
 - [ ] **Real-time Collaboration** - Multi-user editing sessions

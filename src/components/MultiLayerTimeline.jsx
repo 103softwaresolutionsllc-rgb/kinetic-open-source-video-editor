@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -28,7 +28,12 @@ function formatTime(seconds) {
   return `${minutes}:${secs}`;
 }
 
-export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle }) {
+export default function MultiLayerTimeline({
+  onSeek,
+  onClipSelect,
+  onPlayToggle,
+  onImportFiles,
+}) {
   const {
     layers,
     currentTime,
@@ -41,10 +46,16 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
     moveClip,
     reorderClips,
     repositionClip,
+    updateClip,
+    updateLayer,
+    splitClip,
+    duplicateClip,
     addLayer,
+    removeLayer,
   } = useTimeline();
 
   const [draggedClip, setDraggedClip] = useState(null);
+  const [fileDragOver, setFileDragOver] = useState(false);
   const timelineRef = useRef(null);
   const trackRef = useRef(null);
 
@@ -60,6 +71,111 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
 
   const trackWidth = trackRef.current?.clientWidth ?? 800;
   const pixelsPerSecond = trackWidth / totalDuration;
+
+  const handleTrimChange = useCallback(
+    (layerId, clipId, updates) => {
+      updateClip(layerId, clipId, updates);
+    },
+    [updateClip]
+  );
+
+  const handleLayerMute = useCallback(
+    (layerId) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+      updateLayer(layerId, { muted: !layer.muted });
+    },
+    [layers, updateLayer]
+  );
+
+  const handleLayerSolo = useCallback(
+    (layerId) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+      updateLayer(layerId, { solo: !layer.solo });
+    },
+    [layers, updateLayer]
+  );
+
+  const handleLayerRemove = useCallback(
+    (layerId) => {
+      removeLayer(layerId);
+    },
+    [removeLayer]
+  );
+
+  const resolveDropTarget = useCallback(
+    (target) => {
+      const layerEl = target?.closest?.('.timeline-layer');
+      if (layerEl) {
+        const layerId = layerEl.dataset.layerId;
+        const layerType = layerEl.dataset.layerType;
+        const layer = layers.find((l) => l.id === layerId);
+        if (layer) {
+          return { layerId: layer.id, layerType: layer.type };
+        }
+        if (layerId && layerType) {
+          return { layerId, layerType };
+        }
+      }
+
+      return {
+        layerId: VIDEO_LAYER_ID,
+        layerType: 'video',
+      };
+    },
+    [layers]
+  );
+
+  const handleFileDragEnter = useCallback((e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return;
+    e.preventDefault();
+    setFileDragOver(true);
+  }, []);
+
+  const handleFileDragOver = useCallback((e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setFileDragOver(true);
+  }, []);
+
+  const handleFileDragLeave = useCallback((e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setFileDragOver(false);
+  }, []);
+
+  const handleFileDrop = useCallback(
+    (e) => {
+      if (!e.dataTransfer?.files?.length) return;
+      e.preventDefault();
+      setFileDragOver(false);
+
+      const { layerId, layerType } = resolveDropTarget(e.target);
+      onImportFiles?.(e.dataTransfer.files, layerId, layerType);
+    },
+    [onImportFiles, resolveDropTarget]
+  );
+
+  const handleAddVideoLayer = useCallback(() => {
+    const count = layers.filter((l) => l.type === 'video').length;
+    addLayer(`Video Track ${count + 1}`, 'video');
+  }, [layers, addLayer]);
+
+  const handleAddAudioLayer = useCallback(() => {
+    const count = layers.filter((l) => l.type === 'audio').length;
+    addLayer(`Audio Track ${count + 1}`, 'audio');
+  }, [layers, addLayer]);
+
+  const handleSplit = useCallback(() => {
+    if (!selectedClip || !selectedLayer) return;
+    splitClip(selectedLayer, selectedClip, currentTime);
+  }, [selectedClip, selectedLayer, currentTime, splitClip]);
+
+  const handleDuplicate = useCallback(() => {
+    if (!selectedClip || !selectedLayer) return;
+    duplicateClip(selectedLayer, selectedClip);
+  }, [selectedClip, selectedLayer, duplicateClip]);
 
   const handleDragStart = (event) => {
     const parsed = parseClipDragId(event.active.id);
@@ -145,6 +261,14 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
     onSeek?.(clamped);
   };
 
+  const handlePlayheadSeek = useCallback(
+    (time) => {
+      setCurrentTime(time);
+      onSeek?.(time);
+    },
+    [setCurrentTime, onSeek]
+  );
+
   const handleClipSelect = (clipId, layerId) => {
     selectClip(clipId, layerId);
     onClipSelect?.(clipId, layerId);
@@ -173,6 +297,24 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
           >
             {isPlaying ? '⏸' : '▶'}
           </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={handleSplit}
+            disabled={!selectedClip}
+            title="Split at playhead (S)"
+          >
+            ✂️ Split
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={handleDuplicate}
+            disabled={!selectedClip}
+            title="Duplicate clip (Ctrl+D)"
+          >
+            ⧉ Duplicate
+          </button>
           <span className="time-display">
             {formatTime(currentTime)} / {formatTime(totalDuration)}
           </span>
@@ -186,11 +328,20 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
         onDragEnd={handleDragEnd}
       >
         <div
-          className="timeline-content"
+          className={`timeline-content ${fileDragOver ? 'file-drag-over' : ''}`}
           ref={trackRef}
           onClick={handleTimelineClick}
+          onDragEnter={handleFileDragEnter}
+          onDragOver={handleFileDragOver}
+          onDragLeave={handleFileDragLeave}
+          onDrop={handleFileDrop}
           role="presentation"
         >
+          {fileDragOver && (
+            <div className="timeline-drop-overlay" aria-hidden="true">
+              <span>Drop files on a track to import</span>
+            </div>
+          )}
           <div className="time-ruler">
             {Array.from(
               { length: Math.ceil(totalDuration / 10) + 1 },
@@ -215,6 +366,10 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
                 selectedClip={selectedClip}
                 selectedLayer={selectedLayer}
                 onSelectClip={handleClipSelect}
+                onTrimChange={handleTrimChange}
+                onLayerMute={handleLayerMute}
+                onLayerSolo={handleLayerSolo}
+                onLayerRemove={handleLayerRemove}
               />
             ))}
           </div>
@@ -222,6 +377,7 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
           <TimelinePlayhead
             currentTime={currentTime}
             totalDuration={totalDuration}
+            onSeek={handlePlayheadSeek}
           />
         </div>
 
@@ -243,9 +399,16 @@ export default function MultiLayerTimeline({ onSeek, onClipSelect, onPlayToggle 
         <button
           type="button"
           className="add-layer-btn"
-          onClick={() => addLayer('New Track', 'video')}
+          onClick={handleAddVideoLayer}
         >
-          + Add Layer
+          + Video Track
+        </button>
+        <button
+          type="button"
+          className="add-layer-btn secondary"
+          onClick={handleAddAudioLayer}
+        >
+          + Audio Track
         </button>
         <div className="layer-info">
           {layers.length} layer{layers.length !== 1 ? 's' : ''} •{' '}
