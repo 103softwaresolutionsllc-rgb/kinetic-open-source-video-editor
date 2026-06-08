@@ -419,6 +419,13 @@ button.primary:hover:not(:disabled) {
   box-shadow: 0 8px 18px rgba(14,165,164,0.22);
 }
 .file-input { display: none; }
+.hidden-file-inputs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
 
 /* ── VIDEO EDITOR ─────────────────────────────────────────────── */
 .video-editor {

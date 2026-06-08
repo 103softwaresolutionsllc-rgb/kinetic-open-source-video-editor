@@ -16,13 +16,41 @@ function AppShell() {
   useEffect(() => {
     const savedTheme = localStorage.getItem('kinetic-theme') || 'dark';
     setTheme(savedTheme);
-    document.documentElement.setAttribute('data-theme', savedTheme);
+    applyTheme(savedTheme);
   }, []);
+
+  function resolveTheme(theme) {
+    if (theme === 'system') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+    }
+    return theme;
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', resolveTheme(theme));
+  }
+
+  useEffect(() => {
+    if (theme !== 'system') return;
+
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => applyTheme('system');
+
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, [theme]);
 
   const handleThemeChange = (newTheme) => {
     setTheme(newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    applyTheme(newTheme);
     localStorage.setItem('kinetic-theme', newTheme);
+  };
+
+  const closeMenus = () => {
+    setShowProjectMenu(false);
+    setShowExportMenu(false);
   };
 
   const handleFFmpegReload = () => {
@@ -191,25 +219,25 @@ function AppShell() {
                   onMouseEnter={() => setShowProjectMenu(true)}
                   onMouseLeave={() => setShowProjectMenu(false)}
                 >
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addVideos?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addVideos?.(); closeMenus(); }}>
                     📹 Add Videos
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addAudio?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addAudio?.(); closeMenus(); }}>
                     🎵 Add Audio
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.saveProject?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.saveProject?.(); closeMenus(); }}>
                     💾 Save Project
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.downloadProject?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.downloadProject?.(); closeMenus(); }}>
                     📥 Export Project File
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.importProject?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.importProject?.(); closeMenus(); }}>
                     📂 Import Project File
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.preloadFFmpeg?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.preloadFFmpeg?.(); closeMenus(); }}>
                     ⚡ Preload FFmpeg
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.clearProject?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); if (window.confirm('Clear all clips, text, and brand settings?')) { actions?.clearProject?.(); } closeMenus(); }}>
                     🗑️ Clear Project
                   </a>
                 </div>
@@ -233,10 +261,10 @@ function AppShell() {
                   onMouseEnter={() => setShowExportMenu(true)}
                   onMouseLeave={() => setShowExportMenu(false)}
                 >
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportVideo?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportVideo?.(); closeMenus(); }}>
                     🎬 Export as MP4
                   </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportAudio?.(); }}>
+                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportAudio?.(); closeMenus(); }}>
                     🎵 Export as MP3
                   </a>
                 </div>

@@ -1107,8 +1107,8 @@ export default function VideoEditor() {
       downloadProject,
       importProject: () => projectFileInputRef.current?.click(),
       clearProject,
-      exportVideo,
-      exportAudio,
+      exportVideo: () => exportVideo(),
+      exportAudio: () => exportAudio(),
       ffmpegLoaded: loaded,
       hasClips: hasContent,
     });
@@ -1119,7 +1119,7 @@ export default function VideoEditor() {
     clearProject,
     saveProject,
     downloadProject,
-    brandSettings,
+    load,
   ]);
 
   const handleDeleteSelected = useCallback(() => {
@@ -1155,73 +1155,30 @@ export default function VideoEditor() {
   // ─────────────────────────────────────────────
   return (
     <div className="video-editor">
-      <div className="toolbar-row">
-        <label className="file-label">
-          📁 Add Videos
-          <input
-            ref={fileInputRef}
-            className="file-input"
-            type="file"
-            accept="video/*"
-            multiple
-            onChange={handleFiles}
-          />
-        </label>
-
-        <label className="file-label secondary">
-          🎵 Add Audio
-          <input
-            ref={audioFileInputRef}
-            className="file-input"
-            type="file"
-            accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac"
-            multiple
-            onChange={handleAudioFiles}
-          />
-        </label>
-
-        <button type="button" className="secondary" onClick={saveProject}>
-          💾 Save
-        </button>
-
-        <button type="button" className="secondary" onClick={downloadProject}>
-          📥 Export Project
-        </button>
-
-        <label className="file-label secondary">
-          📂 Open Project
-          <input
-            ref={projectFileInputRef}
-            className="file-input"
-            type="file"
-            accept=".json,.kinetic.json,application/json"
-            onChange={handleImportProject}
-          />
-        </label>
-
-        <button
-          className="secondary"
-          onClick={() =>
-            load().then(() => setMessage('✅ FFmpeg ready!'))
-          }
-          disabled={loaded}
-        >
-          {loaded ? '✅ FFmpeg Ready' : '⚡ Preload FFmpeg'}
-        </button>
-
-        <button
-          onClick={exportVideo}
-          disabled={videoClips.length === 0}
-        >
-          ⬇ Export MP4
-        </button>
-
-        <button
-          onClick={exportAudio}
-          disabled={!hasContent}
-        >
-          🎵 Export MP3
-        </button>
+      <div className="hidden-file-inputs" aria-hidden="true">
+        <input
+          ref={fileInputRef}
+          className="file-input"
+          type="file"
+          accept="video/*"
+          multiple
+          onChange={handleFiles}
+        />
+        <input
+          ref={audioFileInputRef}
+          className="file-input"
+          type="file"
+          accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac"
+          multiple
+          onChange={handleAudioFiles}
+        />
+        <input
+          ref={projectFileInputRef}
+          className="file-input"
+          type="file"
+          accept=".json,.kinetic.json,application/json"
+          onChange={handleImportProject}
+        />
       </div>
 
       {progress > 0 && progress < 100 && (
