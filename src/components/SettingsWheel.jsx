@@ -1,17 +1,30 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { USER_GUIDE_STEPS } from '../content/userGuide.js';
 
-export default function SettingsWheel({ 
-  currentTheme, 
-  onThemeChange, 
+function GuideTip({ text }) {
+  const parts = text.split(/\*\*(.*?)\*\*/g);
+  return (
+    <li>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+      )}
+    </li>
+  );
+}
+
+export default function SettingsWheel({
+  currentTheme,
+  onThemeChange,
   onFFmpegReload,
   onBrandKitOpen,
-  ffmpegLoaded 
+  ffmpegLoaded,
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [expandedStep, setExpandedStep] = useState('start');
   const wheelRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -26,7 +39,7 @@ export default function SettingsWheel({
   const themeOptions = [
     { value: 'dark', label: '🌙 Dark Mode', description: 'Cyber Midnight theme' },
     { value: 'light', label: '☀️ Light Mode', description: 'Frosted Silver theme' },
-    { value: 'system', label: '🖥️ System', description: 'Follow system preference' }
+    { value: 'system', label: '🖥️ System', description: 'Follow system preference' },
   ];
 
   const handleThemeChange = (theme) => {
@@ -39,12 +52,20 @@ export default function SettingsWheel({
     setIsOpen(false);
   };
 
+  const toggleGuide = () => {
+    setGuideOpen((open) => {
+      if (!open) setExpandedStep('start');
+      return !open;
+    });
+  };
+
   return (
     <div className="settings-wheel" ref={wheelRef}>
-      <button 
+      <button
         className="settings-button"
         onClick={() => setIsOpen(!isOpen)}
         title="Settings"
+        type="button"
       >
         ⚙️
         <div className="settings-indicator">
@@ -53,13 +74,79 @@ export default function SettingsWheel({
       </button>
 
       {isOpen && (
-        <div className="settings-dropdown" ref={dropdownRef}>
+        <div
+          className={`settings-dropdown ${guideOpen ? 'has-guide' : ''}`}
+          ref={dropdownRef}
+        >
+          <div className="settings-section guide-section">
+            <button
+              type="button"
+              className="guide-toggle"
+              onClick={toggleGuide}
+              aria-expanded={guideOpen}
+            >
+              <span className="guide-toggle-label">
+                <span className="guide-toggle-icon">📖</span>
+                <span>
+                  <span className="guide-toggle-title">User&apos;s Guide</span>
+                  <span className="guide-toggle-subtitle">
+                    Quick start for new editors
+                  </span>
+                </span>
+              </span>
+              <span className="guide-toggle-chevron" aria-hidden>
+                {guideOpen ? '▲' : '▼'}
+              </span>
+            </button>
+
+            {guideOpen && (
+              <div className="user-guide">
+                <p className="guide-intro">
+                  New to Kinetic? Follow these steps to go from import to export.
+                </p>
+                <div className="guide-steps">
+                  {USER_GUIDE_STEPS.map((step) => {
+                    const isExpanded = expandedStep === step.id;
+                    return (
+                      <div
+                        key={step.id}
+                        className={`guide-step ${isExpanded ? 'expanded' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          className="guide-step-header"
+                          onClick={() =>
+                            setExpandedStep(isExpanded ? null : step.id)
+                          }
+                          aria-expanded={isExpanded}
+                        >
+                          <span className="guide-step-title">
+                            {step.icon} {step.title}
+                          </span>
+                          <span className="guide-step-summary">{step.summary}</span>
+                        </button>
+                        {isExpanded && (
+                          <ul className="guide-step-tips">
+                            {step.tips.map((tip, index) => (
+                              <GuideTip key={index} text={tip} />
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="settings-section">
             <h4>🌓 Appearance</h4>
             <div className="theme-options">
               {themeOptions.map((option) => (
                 <button
                   key={option.value}
+                  type="button"
                   className={`theme-option ${currentTheme === option.value ? 'active' : ''}`}
                   onClick={() => handleThemeChange(option.value)}
                 >
@@ -72,10 +159,7 @@ export default function SettingsWheel({
 
           <div className="settings-section">
             <h4>⚡ Engine Config</h4>
-            <button 
-              className="engine-option"
-              onClick={handleFFmpegReload}
-            >
+            <button type="button" className="engine-option" onClick={handleFFmpegReload}>
               <span className="engine-icon">🔄</span>
               <div className="engine-info">
                 <div className="engine-title">Reinitialize FFmpeg</div>
@@ -88,7 +172,8 @@ export default function SettingsWheel({
 
           <div className="settings-section">
             <h4>🎨 Brand Kit</h4>
-            <button 
+            <button
+              type="button"
               className="brand-option"
               onClick={() => {
                 onBrandKitOpen();

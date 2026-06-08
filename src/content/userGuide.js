@@ -1,0 +1,68 @@
+export const USER_GUIDE_STEPS = [
+  {
+    id: 'start',
+    icon: '🚀',
+    title: 'Getting started',
+    summary: 'Import clips and load the engine',
+    tips: [
+      'Click **Project → Add Videos** or drag files onto a timeline track.',
+      'Use **Project → Add Audio** for music, voiceovers, or separate audio files.',
+      'On first visit, choose **Project → Preload FFmpeg** (or wait for it to load automatically).',
+      'Press **▶** on the timeline to preview your edit from the playhead.',
+    ],
+  },
+  {
+    id: 'edit',
+    icon: '✂️',
+    title: 'Editing clips',
+    summary: 'Trim, split, and arrange on the timeline',
+    tips: [
+      'Click a clip on the timeline or in the **Clips** sidebar to select it.',
+      'Drag clip edges to trim; drag clips to reorder (video) or reposition (audio).',
+      'Use **✂️ Split** at the playhead, or press **S**, to cut a clip in two.',
+      'Press **Ctrl+D** to duplicate the selected clip.',
+      'Under **Transitions & Effects**, adjust fades, presets, brightness, and color.',
+    ],
+  },
+  {
+    id: 'enhance',
+    icon: '🎨',
+    title: 'Enhance your video',
+    summary: 'Crop, text, brand, and audio',
+    tips: [
+      'Select a video clip → **📐 Crop Frame** in the Clips panel.',
+      'Open the **Text** tab to add titles that appear at set times.',
+      'Open **Brand Kit** here in Settings to add a logo, colors, and Kinetic Glow.',
+      'Use the **Mixer** tab to adjust volume, mute, or solo individual tracks.',
+      'Record voiceover from the Mixer tab (**Record Voice**).',
+    ],
+  },
+  {
+    id: 'export',
+    icon: '📤',
+    title: 'Export & save',
+    summary: 'Download your finished video',
+    tips: [
+      '**Export → Export as MP4** for a standard video (default 1080p).',
+      '**Export → Export as MP3** to extract audio only.',
+      'Use the **Export** sidebar tab for presets (YouTube, TikTok, GIF, resolution).',
+      '**Project → Save Project** autosaves locally; use **Export/Import Project File** to back up or move edits.',
+      'Your files never leave your browser — processing is 100% local.',
+    ],
+  },
+  {
+    id: 'shortcuts',
+    icon: '⌨️',
+    title: 'Keyboard shortcuts',
+    summary: 'Work faster with hotkeys',
+    tips: [
+      '**Space** — Play / pause',
+      '**← / →** — Seek 1 second',
+      '**Ctrl+S** — Save project',
+      '**Ctrl+O** — Open project file',
+      '**Delete** — Remove selected clip',
+      '**Ctrl+D** — Duplicate clip',
+      '**S** — Split at playhead',
+    ],
+  },
+];

@@ -1513,6 +1513,123 @@ button.primary:hover:not(:disabled) {
   margin-top: 8px;
   overflow: hidden;
 }
+.settings-dropdown.has-guide {
+  min-width: 340px;
+  max-height: min(85vh, 720px);
+  overflow-y: auto;
+}
+.settings-section.guide-section {
+  padding: 12px 16px 16px;
+  background: rgba(191, 0, 255, 0.06);
+}
+.guide-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+.guide-toggle:hover,
+.guide-toggle[aria-expanded='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(191, 0, 255, 0.2);
+}
+.guide-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.guide-toggle-icon {
+  font-size: 1.25rem;
+}
+.guide-toggle-title {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.guide-toggle-subtitle {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.guide-toggle-chevron {
+  color: var(--accent);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+.user-guide {
+  margin-top: 12px;
+}
+.guide-intro {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0 0 10px 0;
+}
+.guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.guide-step {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.guide-step.expanded {
+  border-color: rgba(191, 0, 255, 0.35);
+}
+.guide-step-header {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.guide-step-header:hover {
+  background: rgba(191, 0, 255, 0.08);
+}
+.guide-step-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.guide-step-summary {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.guide-step-tips {
+  margin: 0;
+  padding: 0 12px 12px 28px;
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+.guide-step-tips li {
+  margin-bottom: 6px;
+}
+.guide-step-tips li:last-child {
+  margin-bottom: 0;
+}
+.guide-step-tips strong {
+  color: var(--accent-2);
+  font-weight: 600;
+}
 .settings-dropdown::before {
   content: '';
   position: absolute;
