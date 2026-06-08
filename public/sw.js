@@ -1,11 +1,8 @@
-const CACHE_NAME = 'kinetic-v1.0.0';
-const STATIC_CACHE = 'kinetic-static-v1.0.0';
-const RUNTIME_CACHE = 'kinetic-runtime-v1.0.0';
+const SW_VERSION = 'kinetic-v1.0.1';
+const STATIC_CACHE = `${SW_VERSION}-static`;
+const RUNTIME_CACHE = `${SW_VERSION}-runtime`;
 
-// Files to cache for offline access
 const STATIC_FILES = [
-  '/',
-  '/index.html',
   '/site.webmanifest',
   '/fonts/Roboto-Regular.ttf',
   '/assets/kinetic-logo.png',
@@ -18,181 +15,93 @@ const STATIC_FILES = [
   '/assets/android-chrome-512x512.png',
 ];
 
-// FFmpeg core files for offline processing
-const FFMPEG_FILES = [
-  'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/umd/ffmpeg-core.js',
-  'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/umd/ffmpeg-core.wasm',
-  'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/umd/ffmpeg-core.worker.js'
-];
+function isHashedAsset(pathname) {
+  return (
+    pathname.startsWith('/assets/') ||
+    /\.(js|css|mjs|wasm|woff2?|ttf|png|jpe?g|svg|ico|webp|webmanifest)$/i.test(
+      pathname
+    )
+  );
+}
 
-// Install event - cache static files
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Installing...');
-  
   event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('Service Worker: Caching static files');
-        return cache.addAll(STATIC_FILES);
-      })
-      .then(() => {
-        console.log('Service Worker: Static files cached');
-        return self.skipWaiting();
-      })
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.addAll(STATIC_FILES))
+      .then(() => self.skipWaiting())
   );
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker: Activating...');
-  
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== STATIC_CACHE && cacheName !== RUNTIME_CACHE) {
-              console.log('Service Worker: Deleting old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      })
-      .then(() => {
-        console.log('Service Worker: Activated');
-        return self.clients.claim();
-      })
+    caches
+      .keys()
+      .then((cacheNames) =>
+        Promise.all(
+          cacheNames
+            .filter((name) => name !== STATIC_CACHE && name !== RUNTIME_CACHE)
+            .map((name) => caches.delete(name))
+        )
+      )
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch event - serve from cache when offline
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  if (request.method !== 'GET') return;
+
   const url = new URL(request.url);
+  if (url.origin !== self.location.origin) {
+    if (url.href.includes('@ffmpeg/core-mt')) {
+      event.respondWith(
+        caches.open(RUNTIME_CACHE).then(async (cache) => {
+          const cached = await cache.match(request);
+          if (cached) return cached;
 
-  // Skip non-GET requests
-  if (request.method !== 'GET') {
-    return;
-  }
-
-  // Handle FFmpeg files with special caching
-  if (url.href.includes('@ffmpeg/core-mt')) {
-    event.respondWith(
-      caches.open(RUNTIME_CACHE)
-        .then((cache) => {
-          return cache.match(request)
-            .then((response) => {
-              if (response) {
-                return response;
-              }
-
-              // Fetch and cache FFmpeg files
-              return fetch(request)
-                .then((response) => {
-                  if (response.ok) {
-                    cache.put(request, response.clone());
-                  }
-                  return response;
-                })
-                .catch(() => {
-                  // Return cached version if available
-                  return cache.match(request);
-                });
-            });
-        })
-    );
-    return;
-  }
-
-  // Handle static files
-  if (STATIC_FILES.some(file => url.pathname === file || url.pathname.endsWith(file))) {
-    event.respondWith(
-      caches.open(STATIC_CACHE)
-        .then((cache) => {
-          return cache.match(request)
-            .then((response) => {
-              return response || fetch(request);
-            });
-        })
-    );
-    return;
-  }
-
-  // Handle API requests with network-first strategy
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
+          const response = await fetch(request);
           if (response.ok) {
-            const responseClone = response.clone();
-            caches.open(RUNTIME_CACHE)
-              .then((cache) => cache.put(request, responseClone));
+            cache.put(request, response.clone());
           }
           return response;
         })
-        .catch(() => {
-          return caches.match(request);
+      );
+    }
+    return;
+  }
+
+  if (isHashedAsset(url.pathname)) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => response)
+        .catch(async () => {
+          const cached = await caches.match('/index.html');
+          return cached || new Response('Offline', { status: 503 });
         })
     );
     return;
   }
 
-  // Default: network-first with cache fallback
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        // Cache successful responses
-        if (response.ok && request.url.includes(self.location.origin)) {
-          const responseClone = response.clone();
-          caches.open(RUNTIME_CACHE)
-            .then((cache) => cache.put(request, responseClone));
-        }
-        return response;
+  if (STATIC_FILES.includes(url.pathname)) {
+    event.respondWith(
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        return cached || fetch(request);
       })
-      .catch(() => {
-        // Try cache if network fails
-        return caches.match(request)
-          .then((response) => {
-            return response || new Response('Offline', { 
-              status: 503, 
-              statusText: 'Service Unavailable' 
-            });
-          });
-      })
-  );
-});
-
-// Background sync for offline actions
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'background-sync') {
-    event.waitUntil(doBackgroundSync());
+    );
+    return;
   }
-});
 
-async function doBackgroundSync() {
-  // Handle background sync tasks
-  console.log('Service Worker: Background sync triggered');
-}
-
-// Push notifications (future feature)
-self.addEventListener('push', (event) => {
-  const options = {
-    body: event.data.text(),
-    icon: '/assets/kinetic-logo.png',
-    badge: '/assets/favicon.ico',
-    vibrate: [200, 100, 200]
-  };
-
-  event.waitUntil(
-    self.registration.showNotification('Kinetic Video Editor', options)
-  );
-});
-
-// Handle notification clicks
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  
-  event.waitUntil(
-    clients.openWindow('/')
+  event.respondWith(
+    fetch(request).catch(async () => {
+      const cached = await caches.match(request);
+      return cached || new Response('Offline', { status: 503 });
+    })
   );
 });
