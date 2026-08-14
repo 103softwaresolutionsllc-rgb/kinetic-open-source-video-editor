@@ -17,24 +17,34 @@ export default function SettingsWheel({
   onThemeChange,
   onFFmpegReload,
   onBrandKitOpen,
+  onPrivacyOpen,
   ffmpegLoaded,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [expandedStep, setExpandedStep] = useState('start');
   const wheelRef = useRef(null);
-  const dropdownRef = useRef(null);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
+
     function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      if (wheelRef.current && !wheelRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     }
 
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') setIsOpen(false);
+    }
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
 
   const themeOptions = [
     { value: 'dark', label: '🌙 Dark Mode', description: 'Cyber Midnight theme' },
@@ -63,9 +73,11 @@ export default function SettingsWheel({
     <div className="settings-wheel" ref={wheelRef}>
       <button
         className="settings-button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setIsOpen((open) => !open)}
         title="Settings"
         type="button"
+        aria-haspopup="true"
+        aria-expanded={isOpen}
       >
         ⚙️
         <div className="settings-indicator">
@@ -76,7 +88,6 @@ export default function SettingsWheel({
       {isOpen && (
         <div
           className={`settings-dropdown ${guideOpen ? 'has-guide' : ''}`}
-          ref={dropdownRef}
         >
           <div className="settings-section guide-section">
             <button
@@ -165,6 +176,26 @@ export default function SettingsWheel({
                 <div className="engine-title">Reinitialize FFmpeg</div>
                 <div className="engine-status">
                   Status: {ffmpegLoaded ? '✅ Loaded' : '⏳ Loading'}
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <div className="settings-section">
+            <h4>🔒 Privacy</h4>
+            <button
+              type="button"
+              className="brand-option"
+              onClick={() => {
+                onPrivacyOpen?.();
+                setIsOpen(false);
+              }}
+            >
+              <span className="brand-icon">🛡️</span>
+              <div className="brand-info">
+                <div className="brand-title">Session-only editing</div>
+                <div className="brand-description">
+                  Videos stay in this tab and are wiped when you leave
                 </div>
               </div>
             </button>

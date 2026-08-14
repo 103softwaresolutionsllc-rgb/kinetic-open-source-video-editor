@@ -205,45 +205,6 @@ style={{ width: `${exportProgress}%` }}
 </div>
 )}
 </div>
-
-<style jsx>{`
-/* Your original beautiful styles are fully preserved */
-.export-presets {
-background: var(--surface);
-border: 1px solid var(--glass-border);
-border-radius: var(--radius-lg);
-padding: 1.5rem;
-margin-top: 1rem;
-}
-
-.preset-grid {
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-gap: 1rem;
-margin-bottom: 1.5rem;
-}
-
-.preset-card {
-background: var(--surface-secondary);
-border: 1px solid var(--glass-border);
-border-radius: var(--radius-md);
-padding: 1rem;
-cursor: pointer;
-transition: all 0.2s ease;
-}
-
-.preset-card:hover {
-border-color: var(--electric-purple);
-transform: translateY(-2px);
-}
-
-.preset-card.selected {
-border-color: var(--electric-purple);
-background: var(--electric-purple-alpha);
-}
-
-/* ... all your other styles (progress bar, buttons, etc.) remain exactly as you wrote them ... */
-`}</style>
 </div>
 );
 };

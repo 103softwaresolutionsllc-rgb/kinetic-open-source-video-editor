@@ -2,6 +2,8 @@ const DB_NAME = 'kinetic-editor';
 const DB_VERSION = 1;
 const AUTOSAVE_KEY = 'autosave';
 const PROJECT_VERSION = 1;
+// Public sessions must not leave footage in IndexedDB for the next visitor.
+const ALLOW_BROWSER_MEDIA_PERSISTENCE = false;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -107,6 +109,8 @@ async function hydrateLayers(db, layers) {
 }
 
 export async function saveProjectToStorage({ layers, textOverlays, brandSettings }) {
+  if (!ALLOW_BROWSER_MEDIA_PERSISTENCE) return;
+
   const db = await openDB();
   const payload = buildProjectPayload({ layers, textOverlays, brandSettings });
 
@@ -123,6 +127,8 @@ export async function saveProjectToStorage({ layers, textOverlays, brandSettings
 }
 
 export async function loadProjectFromStorage() {
+  if (!ALLOW_BROWSER_MEDIA_PERSISTENCE) return null;
+
   const db = await openDB();
 
   const payload = await new Promise((resolve, reject) => {
@@ -161,6 +167,15 @@ export async function clearProjectStorage() {
   });
 
   db.close();
+}
+
+export function deleteEditorDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => resolve();
+  });
 }
 
 function blobToBase64(blob) {

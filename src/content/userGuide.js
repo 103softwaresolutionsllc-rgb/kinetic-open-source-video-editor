@@ -46,8 +46,9 @@ export const USER_GUIDE_STEPS = [
       '**Export → Export as MP4** for a standard video (default 1080p).',
       '**Export → Export as MP3** to extract audio only.',
       'Use the **Export** sidebar tab for presets (YouTube, TikTok, GIF, resolution).',
-      '**Project → Save Project** autosaves locally; use **Export/Import Project File** to back up or move edits.',
-      'Your files never leave your browser — processing is 100% local.',
+      '**Project → Save Project File** downloads a `.kinetic.json` to your computer. Nothing is kept on this site.',
+      '**Project → Open Project File** reloads that file in a new session.',
+      'Closing the tab wipes the session so the next visitor cannot see your clips.',
     ],
   },
   {
@@ -58,7 +59,7 @@ export const USER_GUIDE_STEPS = [
     tips: [
       '**Space** — Play / pause',
       '**← / →** — Seek 1 second',
-      '**Ctrl+S** — Save project',
+      '**Ctrl+S** — Save project file to your computer',
       '**Ctrl+O** — Open project file',
       '**Delete** — Remove selected clip',
       '**Ctrl+D** — Duplicate clip',

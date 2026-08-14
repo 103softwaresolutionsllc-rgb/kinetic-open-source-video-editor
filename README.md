@@ -10,9 +10,13 @@ Kinetic is a browser-based, non-linear video editor (NLE) built for speed, priva
 *   **Audio Extraction & Waveforms:** Extract audio from videos with visual waveform feedback for precise editing.
 *   **One-Click Branding:** Add logos and custom colors with Neon Glow effects instantly.
 *   **PWA Support:** Install to desktop and work offline with cached FFmpeg processing.
-*   **Zero-Footprint Editing:** All processing happens locally. No accounts, no uploads, no watermarks.
+*   **Zero-Footprint Editing:** All processing happens locally. No accounts, no uploads, no leftover projects for the next visitor.
 *   **Multi-threaded Processing:** Utilizes all CPU cores for faster video rendering.
 *   **Open Source:** Built by the community, for the community.
+
+## 🔒 Session-only privacy
+
+Kinetic is meant to be used in public. Footage never leaves the tab, is not uploaded, and is not restored for the next visitor. Save a `.kinetic.json` file or export MP4/MP3 to keep work on your own computer. Details: [PRIVACY.md](PRIVACY.md).
 
 ## 🚀 Quick Start
 
@@ -81,7 +85,7 @@ kinetic-open-source-video-editor/
 │   ├── contexts/
 │   │   └── TimelineContext.jsx    # Timeline state management
 │   ├── services/
-│   │   └── ProjectStorage.js      # IndexedDB autosave + .kinetic.json projects
+│   │   └── ProjectStorage.js      # .kinetic.json import/export (no shared autosave)
 │   ├── hooks/
 │   │   ├── useFFmpeg.js           # FFmpeg.wasm loader (core-mt)
 │   │   ├── useSequencePlayback.js # Multi-clip timeline playback
@@ -111,8 +115,8 @@ kinetic-open-source-video-editor/
 
 ### Installation
 ```bash
-git clone https://github.com/your-username/kinetic-video-editor.git
-cd kinetic-video-editor
+git clone https://github.com/103softwaresolutionsllc-rgb/kinetic-open-source-video-editor.git
+cd kinetic-open-source-video-editor
 npm install
 ```
 
@@ -180,7 +184,9 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE).
+
+Privacy details: [PRIVACY.md](PRIVACY.md). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🙏 Acknowledgments
 
@@ -204,16 +210,15 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - [x] **Live Preview Compositor** — Crop, text overlays, brand kit, effect presets
 - [x] **Sequential Playback** — Multi-clip timeline playhead with synced audio tracks
 - [x] **Advanced Effects** — Fade in/out, color presets, brightness/contrast/saturation
-- [x] **Project Save/Load** — IndexedDB autosave + `.kinetic.json` import/export
+- [x] **Project Save/Load** — `.kinetic.json` import/export to the user’s computer
 - [x] **Keyboard Shortcuts** — Space, Ctrl+S/O, Delete, Ctrl+D, S, arrow seek
 - [x] **Export System** — MP4/MP3/GIF/WebM with presets, crop, text, and audio mix
 - [x] **Clip Thumbnails** — Video frame strips and audio waveform bars on timeline
-- [x] **Privacy-First** — All processing local; no uploads or accounts
+- [x] **Privacy-First** — Session-only editing; no uploads, accounts, or leftover projects
 
 ### 📋 Planned (v1.1)
-- [ ] **Real-time Collaboration** - Multi-user editing sessions
+- [ ] **Real-time Collaboration** - Multi-user editing sessions (opt-in; off by default)
 - [ ] **Plugin System** - Extensible effects architecture
-- [ ] **Cloud Storage** - Optional cloud backup (encrypted)
 - [ ] **Mobile Optimization** - Touch-friendly interface
 
 ### 🌟 Community Goals
