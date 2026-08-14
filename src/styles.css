@@ -2202,9 +2202,16 @@ body.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
   transform: none;
   box-shadow: none;
 }
+.site-footer-legal {
+  margin: 4px auto 0;
+  max-width: 640px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
 .site-footer-credit {
   font-size: 0.8rem;
   opacity: 0.8;
+  margin-top: 4px;
 }
 
 .privacy-dialog-overlay {

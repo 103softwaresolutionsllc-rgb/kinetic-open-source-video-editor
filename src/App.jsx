@@ -81,9 +81,7 @@ function AppShell() {
   const siteFooter = (
     <footer className="site-footer">
       <div className="site-footer-lock">🔒 <span>Privacy-first editing</span></div>
-      <p>
-        <strong>Kinetic Video Editor</strong> — Open source • No watermarks • No uploads
-      </p>
+      <p>Open source • No watermarks • No uploads</p>
       <p className="site-footer-note">{PRIVACY_SUMMARY}</p>
       <div className="site-footer-links">
         <button type="button" className="link-button" onClick={() => setShowPrivacy(true)}>
@@ -96,7 +94,12 @@ function AppShell() {
           MIT License
         </a>
       </div>
-      <p className="site-footer-credit">Built for content creators by 103 Software Solutions LLC</p>
+      <p className="site-footer-legal">
+        &copy; 2026 Kinetic Professional Video Editor. All Rights Reserved.
+      </p>
+      <p className="site-footer-credit">
+        A product of 103 Software Solutions LLC. Built with ❤️ for content creators.
+      </p>
     </footer>
   );
 
