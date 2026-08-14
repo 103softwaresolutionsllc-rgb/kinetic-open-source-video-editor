@@ -119,8 +119,6 @@ className="aspect-select"
 </div>
 </div>
 
-{/* Your existing styles remain the same */}
-<style jsx>{` ... `}</style>
 </div>
 );
 };

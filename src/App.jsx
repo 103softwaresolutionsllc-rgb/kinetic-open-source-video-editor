@@ -4,14 +4,25 @@ import { EditorProvider, useEditor } from './contexts/EditorContext.jsx';
 import VideoEditor from './components/VideoEditor.jsx';
 import SettingsWheel from './components/SettingsWheel.jsx';
 import BrandKit from './components/BrandKit.jsx';
+import HeaderMenu from './components/HeaderMenu.jsx';
+import PrivacyDialog from './components/PrivacyDialog.jsx';
+import { installZeroFootprintGuards } from './services/sessionPrivacy.js';
+import { PRIVACY_SUMMARY } from './content/privacyCopy.js';
+
+const GITHUB_URL =
+  'https://github.com/103softwaresolutionsllc-rgb/kinetic-open-source-video-editor';
 
 function AppShell() {
   const [theme, setTheme] = useState('dark');
-  const [showProjectMenu, setShowProjectMenu] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [openMenu, setOpenMenu] = useState(null);
   const [showWelcome, setShowWelcome] = useState(true);
   const [showBrandKit, setShowBrandKit] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const { actions, ffmpegLoaded, brandSettings, setBrandSettings } = useEditor();
+
+  useEffect(() => {
+    return installZeroFootprintGuards();
+  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('kinetic-theme') || 'dark';
@@ -19,17 +30,17 @@ function AppShell() {
     applyTheme(savedTheme);
   }, []);
 
-  function resolveTheme(theme) {
-    if (theme === 'system') {
+  function resolveTheme(themeName) {
+    if (themeName === 'system') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches
         ? 'dark'
         : 'light';
     }
-    return theme;
+    return themeName;
   }
 
-  function applyTheme(theme) {
-    document.documentElement.setAttribute('data-theme', resolveTheme(theme));
+  function applyTheme(themeName) {
+    document.documentElement.setAttribute('data-theme', resolveTheme(themeName));
   }
 
   useEffect(() => {
@@ -48,10 +59,7 @@ function AppShell() {
     localStorage.setItem('kinetic-theme', newTheme);
   };
 
-  const closeMenus = () => {
-    setShowProjectMenu(false);
-    setShowExportMenu(false);
-  };
+  const closeMenus = () => setOpenMenu(null);
 
   const handleFFmpegReload = () => {
     actions?.preloadFFmpeg?.();
@@ -59,6 +67,7 @@ function AppShell() {
 
   const handleBrandKitOpen = () => {
     setShowBrandKit(true);
+    closeMenus();
   };
 
   const handleBrandKitClose = () => {
@@ -69,15 +78,37 @@ function AppShell() {
     setShowWelcome(false);
   }
 
+  const siteFooter = (
+    <footer className="site-footer">
+      <div className="site-footer-lock">🔒 <span>Privacy-first editing</span></div>
+      <p>
+        <strong>Kinetic Video Editor</strong> — Open source • No watermarks • No uploads
+      </p>
+      <p className="site-footer-note">{PRIVACY_SUMMARY}</p>
+      <div className="site-footer-links">
+        <button type="button" className="link-button" onClick={() => setShowPrivacy(true)}>
+          Privacy
+        </button>
+        <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+        <a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">
+          MIT License
+        </a>
+      </div>
+      <p className="site-footer-credit">Built for content creators by 103 Software Solutions LLC</p>
+    </footer>
+  );
+
   if (showWelcome) {
     return (
       <TimelineProvider>
         <div className="landing-page">
           <header className="header">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <img 
-                src="/assets/kinetic-logo.png" 
-                alt="Kinetic Video Editor" 
+              <img
+                src="/assets/kinetic-logo.png"
+                alt="Kinetic Video Editor"
                 style={{ height: '48px', width: '48px', objectFit: 'contain' }}
               />
               <div>
@@ -87,7 +118,7 @@ function AppShell() {
                 </div>
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
                 className="primary"
@@ -96,7 +127,7 @@ function AppShell() {
               >
                 ⚡ Start Editing
               </button>
-              
+
               <button
                 className="secondary"
                 onClick={() => handleThemeChange(theme === 'dark' ? 'light' : 'dark')}
@@ -114,13 +145,14 @@ function AppShell() {
                 <div className="hero-text">
                   <h1 className="hero-title">Your Video. Your Browser. Your Privacy.</h1>
                   <p className="hero-subtitle">
-                    Experience <strong>Kinetic</strong>—the browser-based video editor that doesn't compromise on power. 
-                    Real-time processing, hardened privacy, and pro-grade simplicity in a stunning Electric Purple interface.
+                    Experience <strong>Kinetic</strong>—the browser-based video editor that
+                    doesn&apos;t compromise on power. Real-time processing, session-only
+                    privacy, and pro-grade simplicity in a stunning Electric Purple interface.
                   </p>
                 </div>
                 <div className="hero-poster">
-                  <img 
-                    src="/assets/kinetic-poster-landing-page-copy (2).png" 
+                  <img
+                    src="/assets/kinetic-poster-landing-page-copy (2).png"
                     alt="Kinetic Video Editor - Professional Browser-Based Video Editing"
                     className="hero-image"
                   />
@@ -132,12 +164,15 @@ function AppShell() {
               <div className="feature-card">
                 <div className="feature-icon">⚡</div>
                 <h3>Real-Time Velocity</h3>
-                <p>Don't wait for cloud renders. Kinetic uses your local hardware to process video in real-time.</p>
+                <p>Don&apos;t wait for cloud renders. Kinetic uses your local hardware to process video in real-time.</p>
               </div>
               <div className="feature-card">
                 <div className="feature-icon">🔒</div>
-                <h3>Hardened Privacy</h3>
-                <p>Your footage never leaves your machine. 100% offline-capable once loaded.</p>
+                <h3>Leave Nothing Behind</h3>
+                <p>
+                  Footage never leaves this tab. When you close Kinetic, the next person using
+                  this browser cannot see, restore, or play your clips.
+                </p>
               </div>
               <div className="feature-card">
                 <div className="feature-icon">🎨</div>
@@ -147,7 +182,7 @@ function AppShell() {
             </div>
 
             <div className="cta-section">
-              <button 
+              <button
                 className="primary cta-button"
                 onClick={startEditing}
                 style={{ fontSize: '1.2rem', padding: '16px 32px' }}
@@ -155,29 +190,13 @@ function AppShell() {
                 🎬 Start Creating Now
               </button>
               <p style={{ marginTop: '16px', color: 'var(--muted)' }}>
-                <strong>Zero Footprint:</strong> No uploads • No watermarks • Open source
+                <strong>Zero Footprint:</strong> No uploads • No accounts • No leftover projects
               </p>
             </div>
           </div>
 
-          <footer style={{ 
-            textAlign: 'center', 
-            padding: '20px', 
-            borderTop: '1px solid var(--border)',
-            marginTop: '60px',
-            color: 'var(--muted)',
-            fontSize: '0.85rem'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-              🔒 <span>Privacy-First Editing</span>
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              <strong>Kinetic Video Editor</strong> — Open Source • No Watermarks • No Uploads Required
-            </div>
-            <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-              Build for content creators by 103 Software Solutions LLC
-            </div>
-          </footer>
+          {siteFooter}
+          <PrivacyDialog open={showPrivacy} onClose={() => setShowPrivacy(false)} />
         </div>
       </TimelineProvider>
     );
@@ -188,9 +207,9 @@ function AppShell() {
       <>
         <header className="header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <img 
-              src="/assets/kinetic-logo.png" 
-              alt="Kinetic Video Editor" 
+            <img
+              src="/assets/kinetic-logo.png"
+              alt="Kinetic Video Editor"
               style={{ height: '36px', width: '36px', objectFit: 'contain' }}
             />
             <div>
@@ -200,86 +219,83 @@ function AppShell() {
               </div>
             </div>
           </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {/* Project Dropdown */}
-            <div className="dropdown">
-              <button 
-                className="secondary"
-                onMouseEnter={() => setShowProjectMenu(true)}
-                onMouseLeave={() => setShowProjectMenu(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                📁 Project
-                <span style={{ fontSize: '0.7rem' }}>▼</span>
-              </button>
-              {showProjectMenu && (
-                <div 
-                  className="dropdown-content"
-                  onMouseEnter={() => setShowProjectMenu(true)}
-                  onMouseLeave={() => setShowProjectMenu(false)}
-                >
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addVideos?.(); closeMenus(); }}>
-                    📹 Add Videos
-                  </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.addAudio?.(); closeMenus(); }}>
-                    🎵 Add Audio
-                  </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.saveProject?.(); closeMenus(); }}>
-                    💾 Save Project
-                  </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.downloadProject?.(); closeMenus(); }}>
-                    📥 Export Project File
-                  </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.importProject?.(); closeMenus(); }}>
-                    📂 Import Project File
-                  </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.preloadFFmpeg?.(); closeMenus(); }}>
-                    ⚡ Preload FFmpeg
-                  </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); if (window.confirm('Clear all clips, text, and brand settings?')) { actions?.clearProject?.(); } closeMenus(); }}>
-                    🗑️ Clear Project
-                  </a>
-                </div>
-              )}
-            </div>
 
-            {/* Export Dropdown */}
-            <div className="dropdown">
-              <button 
-                className="primary"
-                onMouseEnter={() => setShowExportMenu(true)}
-                onMouseLeave={() => setShowExportMenu(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                📤 Export
-                <span style={{ fontSize: '0.7rem' }}>▼</span>
-              </button>
-              {showExportMenu && (
-                <div 
-                  className="dropdown-content"
-                  onMouseEnter={() => setShowExportMenu(true)}
-                  onMouseLeave={() => setShowExportMenu(false)}
-                >
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportVideo?.(); closeMenus(); }}>
-                    🎬 Export as MP4
-                  </a>
-                  <a href="#" className="dropdown-item" onClick={(e) => { e.preventDefault(); actions?.exportAudio?.(); closeMenus(); }}>
-                    🎵 Export as MP3
-                  </a>
-                </div>
+          <div className="header-actions">
+            <HeaderMenu
+              id="project-menu"
+              label="📁 Project"
+              variant="secondary"
+              open={openMenu === 'project'}
+              onOpenChange={(next) => setOpenMenu(next ? 'project' : null)}
+            >
+              {(close) => (
+                <>
+                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.addVideos?.(); close(); }}>
+                    📹 Add Videos
+                  </button>
+                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.addAudio?.(); close(); }}>
+                    🎵 Add Audio
+                  </button>
+                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.saveProject?.(); close(); }}>
+                    💾 Save Project File
+                  </button>
+                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.importProject?.(); close(); }}>
+                    📂 Open Project File
+                  </button>
+                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.preloadFFmpeg?.(); close(); }}>
+                    ⚡ Preload FFmpeg
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="header-menu-item header-menu-item-danger"
+                    onClick={() => {
+                      if (window.confirm('Clear this session? Clips, text, and brand settings will be erased from this tab.')) {
+                        actions?.clearProject?.();
+                      }
+                      close();
+                    }}
+                  >
+                    🗑️ Clear Session
+                  </button>
+                </>
               )}
-            </div>
+            </HeaderMenu>
+
+            <HeaderMenu
+              id="export-menu"
+              label="📤 Export"
+              variant="primary"
+              open={openMenu === 'export'}
+              onOpenChange={(next) => setOpenMenu(next ? 'export' : null)}
+            >
+              {(close) => (
+                <>
+                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.exportVideo?.(); close(); }}>
+                    🎬 Export as MP4
+                  </button>
+                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.exportAudio?.(); close(); }}>
+                    🎵 Export as MP3
+                  </button>
+                </>
+              )}
+            </HeaderMenu>
 
             <SettingsWheel
-                currentTheme={theme}
-                onThemeChange={handleThemeChange}
-                onFFmpegReload={handleFFmpegReload}
-                onBrandKitOpen={handleBrandKitOpen}
-                ffmpegLoaded={ffmpegLoaded}
-              />
+              currentTheme={theme}
+              onThemeChange={handleThemeChange}
+              onFFmpegReload={handleFFmpegReload}
+              onBrandKitOpen={handleBrandKitOpen}
+              onPrivacyOpen={() => {
+                setShowPrivacy(true);
+                closeMenus();
+              }}
+              ffmpegLoaded={ffmpegLoaded}
+            />
           </div>
         </header>
+
+        <p className="session-privacy-banner">{PRIVACY_SUMMARY}</p>
 
         <div className="app-container">
           <div className="content">
@@ -299,25 +315,8 @@ function AppShell() {
           </div>
         </div>
 
-        {/* Enhanced Footer */}
-        <footer style={{ 
-          textAlign: 'center', 
-          padding: '20px', 
-          borderTop: '1px solid var(--border)',
-          marginTop: '40px',
-          color: 'var(--muted)',
-          fontSize: '0.85rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-            🔒 <span>Privacy-First Editing</span>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <strong>Kinetic Video Editor</strong> — Open Source • No Watermarks • No Uploads Required
-          </div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-            Build for content creators by 103 Software Solutions LLC
-          </div>
-        </footer>
+        {siteFooter}
+        <PrivacyDialog open={showPrivacy} onClose={() => setShowPrivacy(false)} />
       </>
     </TimelineProvider>
   );

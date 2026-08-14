@@ -36,12 +36,15 @@ import {
 } from '../utils/clipThumbnails.js';
 import { useSequencePlayback } from '../hooks/useSequencePlayback.js';
 import {
-  saveProjectToStorage,
-  loadProjectFromStorage,
-  clearProjectStorage,
   exportProjectFile,
   importProjectFile,
 } from '../services/ProjectStorage.js';
+import { wipeLocalEditorData } from '../services/sessionPrivacy.js';
+import {
+  collectMediaUrls,
+  revokeAllLayerMedia,
+  revokeClipMedia,
+} from '../utils/mediaUrls.js';
 
 // Integrated components
 import AudioMixer from './AudioMixer.jsx';
@@ -64,8 +67,6 @@ export default function VideoEditor() {
   const fileInputRef = useRef(null);
   const audioFileInputRef = useRef(null);
   const projectFileInputRef = useRef(null);
-  const autosaveTimerRef = useRef(null);
-  const projectRestoredRef = useRef(false);
   const wavesurferRef = useRef(null);
   const wsReadyRef = useRef(false);
   const previewIsAudioRef = useRef(false);
@@ -370,35 +371,15 @@ export default function VideoEditor() {
 
   const saveProject = useCallback(async () => {
     try {
-      await saveProjectToStorage({ layers, textOverlays, brandSettings });
-      setMessage('💾 Project saved locally.');
+      await exportProjectFile({ layers, textOverlays, brandSettings });
+      setMessage('💾 Project file saved to your downloads. Nothing was stored on this site.');
     } catch (err) {
       console.error(err);
       setMessage(`❌ Save failed: ${err.message}`);
     }
   }, [layers, textOverlays, brandSettings]);
 
-  const downloadProject = useCallback(async () => {
-    try {
-      await exportProjectFile({ layers, textOverlays, brandSettings });
-      setMessage('📥 Project file downloaded.');
-    } catch (err) {
-      console.error(err);
-      setMessage(`❌ Export failed: ${err.message}`);
-    }
-  }, [layers, textOverlays, brandSettings]);
-
-  const restoreProject = useCallback(async () => {
-    try {
-      const project = await loadProjectFromStorage();
-      if (!project) return false;
-      applyLoadedProject(project, `📂 Restored autosave from ${new Date(project.savedAt).toLocaleString()}`);
-      return true;
-    } catch (err) {
-      console.error(err);
-      return false;
-    }
-  }, [applyLoadedProject]);
+  const downloadProject = saveProject;
 
   const handleImportProject = useCallback(
     async (e) => {
@@ -408,11 +389,6 @@ export default function VideoEditor() {
       try {
         const project = await importProjectFile(file);
         applyLoadedProject(project, `📂 Loaded project: ${file.name}`);
-        await saveProjectToStorage({
-          layers: project.layers,
-          textOverlays: project.textOverlays,
-          brandSettings: project.brandSettings,
-        });
       } catch (err) {
         console.error(err);
         setMessage(`❌ Import failed: ${err.message}`);
@@ -425,11 +401,13 @@ export default function VideoEditor() {
 
   const clearProject = useCallback(async () => {
     stopSequence();
+    revokeAllLayerMedia(layers);
     clearTimeline();
     setTextOverlays([]);
+    setBrandSettings(null);
     setPreviewClipId(null);
     previewIsAudioRef.current = false;
-    setMessage('Project cleared.');
+    setMessage('Session cleared. Nothing remains in this browser for the next visitor.');
 
     if (videoRef.current) {
       videoRef.current.pause();
@@ -441,33 +419,22 @@ export default function VideoEditor() {
     wsReadyRef.current = false;
 
     try {
-      await clearProjectStorage();
+      await wipeLocalEditorData();
     } catch (err) {
       console.error(err);
     }
-  }, [clearTimeline, stopSequence]);
+  }, [clearTimeline, layers, setBrandSettings, stopSequence]);
 
   useEffect(() => {
-    if (projectRestoredRef.current) return;
-    projectRestoredRef.current = true;
-    restoreProject();
-  }, [restoreProject]);
-
-  useEffect(() => {
-    if (!hasContent && textOverlays.length === 0 && !brandSettings) return;
-
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-    }
-
-    autosaveTimerRef.current = setTimeout(() => {
-      saveProjectToStorage({ layers, textOverlays, brandSettings }).catch(console.error);
-    }, 2000);
-
-    return () => {
-      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    const onBeforeUnload = (event) => {
+      if (!hasContent && textOverlays.length === 0 && !brandSettings) return;
+      event.preventDefault();
+      event.returnValue = '';
     };
-  }, [layers, textOverlays, brandSettings, hasContent]);
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [brandSettings, hasContent, textOverlays.length]);
 
   useEffect(() => {
     setFFmpegLoaded(loaded);
@@ -738,9 +705,18 @@ export default function VideoEditor() {
 
   const removeClipById = useCallback(
     (clipId) => {
-      const layer = findLayerForClip(layers, clipId);
-      if (!layer) return;
-      removeClip(layer.id, clipId);
+      const found = findClipById(layers, clipId);
+      if (!found) return;
+
+      const remainingUrls = collectMediaUrls(
+        layers.map((layer) => ({
+          ...layer,
+          clips: layer.clips.filter((clip) => clip.id !== clipId),
+        }))
+      );
+      revokeClipMedia(found.clip, remainingUrls);
+
+      removeClip(found.layerId, clipId);
       if (previewClipId === clipId) {
         setPreviewClipId(null);
         previewIsAudioRef.current = false;
@@ -1097,30 +1073,32 @@ export default function VideoEditor() {
     }
   }
 
-  useEffect(() => {
-    registerActions({
-      addVideos: () => fileInputRef.current?.click(),
-      addAudio: () => audioFileInputRef.current?.click(),
-      preloadFFmpeg: () =>
-        load().then(() => setMessage('✅ FFmpeg ready!')),
-      saveProject,
-      downloadProject,
-      importProject: () => projectFileInputRef.current?.click(),
-      clearProject,
-      exportVideo: () => exportVideo(),
-      exportAudio: () => exportAudio(),
-      ffmpegLoaded: loaded,
-      hasClips: hasContent,
-    });
-  }, [
-    loaded,
-    hasContent,
-    registerActions,
-    clearProject,
+  const actionHandlersRef = useRef({});
+  actionHandlersRef.current = {
+    addVideos: () => fileInputRef.current?.click(),
+    addAudio: () => audioFileInputRef.current?.click(),
+    preloadFFmpeg: () => load().then(() => setMessage('✅ FFmpeg ready!')),
     saveProject,
     downloadProject,
-    load,
-  ]);
+    importProject: () => projectFileInputRef.current?.click(),
+    clearProject,
+    exportVideo: () => exportVideo(),
+    exportAudio: () => exportAudio(),
+  };
+
+  useEffect(() => {
+    registerActions({
+      addVideos: () => actionHandlersRef.current.addVideos(),
+      addAudio: () => actionHandlersRef.current.addAudio(),
+      preloadFFmpeg: () => actionHandlersRef.current.preloadFFmpeg(),
+      saveProject: () => actionHandlersRef.current.saveProject(),
+      downloadProject: () => actionHandlersRef.current.downloadProject(),
+      importProject: () => actionHandlersRef.current.importProject(),
+      clearProject: () => actionHandlersRef.current.clearProject(),
+      exportVideo: () => actionHandlersRef.current.exportVideo(),
+      exportAudio: () => actionHandlersRef.current.exportAudio(),
+    });
+  }, [registerActions]);
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedClip || !selectedLayer) return;
@@ -1692,8 +1670,8 @@ export default function VideoEditor() {
 
       <div className="note muted">
         <small>
-          🔒 All processing happens in your browser.
-          No uploads. No watermarks.
+          🔒 All processing happens in this tab. No uploads. No leftover projects.
+          Closing Kinetic erases the session so nobody else can view your clips.
         </small>
       </div>
     </div>
