@@ -4,6 +4,19 @@
 
 Kinetic is a browser-based, non-linear video editor (NLE) built for speed, privacy, and precision. By leveraging **FFmpeg.wasm**, Kinetic brings desktop-class processing power directly to your browser without ever uploading your data to a server.
 
+## 🎬 See it in action
+
+Try it live: https://kinetic-open-source-video-editor.vercel.app — no install, no account, and your footage never leaves the tab.
+
+![Kinetic editor with clips loaded on the timeline](docs/screenshots/kinetic-editor-hero.png)
+*Editor with five clips loaded, live preview, and per-clip in/out points*
+
+![Kinetic multi-layer timeline](docs/screenshots/kinetic-timeline.png)
+*Multi-layer timeline with playhead, split/duplicate controls, and FFmpeg preloaded*
+
+Latest release: [v1.0.0](https://github.com/103softwaresolutionsllc-rgb/kinetic-open-source-video-editor/releases/tag/v1.0.0)
+
+
 ## 🌟 Key Features
 
 *   **Multi-Layer Timeline:** Professional NLE interface with separate video/audio tracks and drag-and-drop functionality.
