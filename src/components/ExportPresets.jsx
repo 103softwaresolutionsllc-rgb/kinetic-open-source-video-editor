@@ -2,12 +2,14 @@ import React, { useState, useCallback } from 'react';
 
 const ExportPresets = ({
 onExport,
+onLoadFFmpeg, // Loads FFmpeg on demand so this tab is never a dead end
 ffmpegLoaded = false,
 exportProgress = 0, // Real progress from useFFmpeg hook
 isExporting = false, // Real exporting state
 onExportStart // Optional callback when export begins
 }) => {
 const [selectedPreset, setSelectedPreset] = useState('youtube');
+const [starting, setStarting] = useState(false);
 const [customSettings, setCustomSettings] = useState({
 resolution: '1920x1080',
 bitrate: '5M',
@@ -74,24 +76,28 @@ setCustomSettings({ ...presets[presetName] });
 }, [presets]);
 
 const handleExport = useCallback(async () => {
-if (!ffmpegLoaded) {
-alert('FFmpeg is still loading. Please wait...');
-return;
-}
-
 const settings = selectedPreset === 'custom'
 ? customSettings
 : presets[selectedPreset];
 
+setStarting(true);
+try {
+// Load FFmpeg on demand — previously this button was simply disabled
+// until something else happened to load FFmpeg first.
+if (!ffmpegLoaded && onLoadFFmpeg) {
+await onLoadFFmpeg();
+}
+
 if (onExportStart) onExportStart();
 
-try {
 await onExport(settings);
 } catch (error) {
 console.error('Export failed:', error);
 alert('Export failed: ' + error.message);
+} finally {
+setStarting(false);
 }
-}, [selectedPreset, customSettings, presets, ffmpegLoaded, onExport, onExportStart]);
+}, [selectedPreset, customSettings, presets, ffmpegLoaded, onLoadFFmpeg, onExport, onExportStart]);
 
 const handleCustomSettingChange = (key, value) => {
 setCustomSettings(prev => ({ ...prev, [key]: value }));
@@ -187,11 +193,13 @@ onChange={(e) => handleCustomSettingChange('format', e.target.value)}
 <div className="export-actions">
 <button
 onClick={handleExport}
-disabled={isExporting || !ffmpegLoaded}
+disabled={isExporting || starting}
 className={`export-button ${isExporting ? 'exporting' : ''}`}
 >
 {isExporting
 ? `Exporting... ${Math.round(exportProgress)}%`
+: starting
+? 'Loading FFmpeg…'
 : `Export as ${currentSettings.format.toUpperCase()}`
 }
 </button>
