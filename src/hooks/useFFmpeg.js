@@ -16,39 +16,48 @@ let listenersAttached = false;
 export function useFFmpeg() {
   const [loaded, setLoaded] = useState(false);
   const [progress, setProgress] = useState(0);
-  const loadingRef = useRef(false);
+  const loadPromiseRef = useRef(null);
 
   async function load() {
-    if (loaded || loadingRef.current) return;
-    loadingRef.current = true;
+    if (loaded) return;
+    // Concurrent callers (e.g. Preload clicked, then Export a moment
+    // later) must await the SAME in-flight load — returning early here
+    // would let an export start against an FFmpeg that isn't loaded yet.
+    if (loadPromiseRef.current) return loadPromiseRef.current;
 
-    if (!listenersAttached) {
-      listenersAttached = true;
-      ffmpegInstance.on('progress', ({ progress: p }) => {
-        setProgress(Math.round(p * 100));
-      });
-      ffmpegInstance.on('log', ({ message }) => {
-        console.debug('[ffmpeg]', message);
-      });
-    }
+    loadPromiseRef.current = (async () => {
+      if (!listenersAttached) {
+        listenersAttached = true;
+        ffmpegInstance.on('progress', ({ progress: p }) => {
+          setProgress(Math.round(p * 100));
+        });
+        ffmpegInstance.on('log', ({ message }) => {
+          console.debug('[ffmpeg]', message);
+        });
+      }
+
+      try {
+        await ffmpegInstance.load({
+          coreURL: await toBlobURL(
+            `${CORE_BASE}/ffmpeg-core.js`,
+            'text/javascript'
+          ),
+          wasmURL: await toBlobURL(
+            `${CORE_BASE}/ffmpeg-core.wasm`,
+            'application/wasm'
+          ),
+        });
+        setLoaded(true);
+      } catch (err) {
+        console.error('FFmpeg failed to load:', err);
+        throw err;
+      }
+    })();
 
     try {
-      await ffmpegInstance.load({
-        coreURL: await toBlobURL(
-          `${CORE_BASE}/ffmpeg-core.js`,
-          'text/javascript'
-        ),
-        wasmURL: await toBlobURL(
-          `${CORE_BASE}/ffmpeg-core.wasm`,
-          'application/wasm'
-        ),
-      });
-      setLoaded(true);
-    } catch (err) {
-      console.error('FFmpeg failed to load:', err);
-      throw err;
+      await loadPromiseRef.current;
     } finally {
-      loadingRef.current = false;
+      loadPromiseRef.current = null;
     }
   }
 
