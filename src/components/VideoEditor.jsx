@@ -80,7 +80,33 @@ export default function VideoEditor() {
   const [exportProgressLocal, setExportProgressLocal] = useState(0);
   const [isExportingLocal, setIsExportingLocal] = useState(false);
 
-  const { ffmpeg, fetchFile, loaded, progress, load } = useFFmpeg();
+  const { ffmpeg, fetchFile, loaded, progress, load, terminate } = useFFmpeg();
+
+  // ffmpeg.exec has no built-in timeout: if the wasm worker stalls, an
+  // export hangs at 0% forever with no error. Race every export encode
+  // against a generous timeout; on timeout, kill the worker so the
+  // failure surfaces and FFmpeg can be reloaded for the next attempt.
+  async function execWithTimeout(args, timeoutMs, label) {
+    let timer;
+    try {
+      return await Promise.race([
+        ffmpeg.exec(args),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            terminate();
+            reject(
+              new Error(
+                `${label} timed out after ${Math.round(timeoutMs / 1000)}s. ` +
+                  'The encoder stalled — please try again, or use a lower-resolution preset.'
+              )
+            );
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   const { registerActions, setFFmpegLoaded, brandSettings, setBrandSettings } = useEditor();
   const {
     layers,
@@ -844,17 +870,21 @@ export default function VideoEditor() {
           afChain.push(`volume=${vol}`);
         }
 
-        await ffmpeg.exec([
-          '-ss', `${start}`,
-          '-i', inName,
-          ...(dur ? ['-t', `${dur}`] : []),
-          ...(videoFilters.length ? ['-vf', videoFilters.join(',')] : []),
-          ...(includeAudio && afChain.length ? ['-af', afChain.join(',')] : []),
-          '-c:v', 'libx264',
-          '-preset', 'veryfast',
-          ...(includeAudio ? ['-c:a', 'aac'] : ['-an']),
-          segName,
-        ]);
+        await execWithTimeout(
+          [
+            '-ss', `${start}`,
+            '-i', inName,
+            ...(dur ? ['-t', `${dur}`] : []),
+            ...(videoFilters.length ? ['-vf', videoFilters.join(',')] : []),
+            ...(includeAudio && afChain.length ? ['-af', afChain.join(',')] : []),
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            ...(includeAudio ? ['-c:a', 'aac'] : ['-an']),
+            segName,
+          ],
+          Math.max(240000, Math.round((dur ?? clip.duration ?? 5) * 30000)),
+          `Encoding clip ${i + 1}`
+        );
 
         segFiles.push(segName);
       }
@@ -866,24 +896,32 @@ export default function VideoEditor() {
 
       setMessage('Joining clips…');
       try {
-        await ffmpeg.exec([
-          '-f', 'concat',
-          '-safe', '0',
-          '-i', 'concat.txt',
-          '-c', 'copy',
-          'output.mp4',
-        ]);
+        await execWithTimeout(
+          [
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', 'concat.txt',
+            '-c', 'copy',
+            'output.mp4',
+          ],
+          240000,
+          'Joining clips'
+        );
       } catch {
         setMessage('Re-encoding for compatibility…');
-        await ffmpeg.exec([
-          '-f', 'concat',
-          '-safe', '0',
-          '-i', 'concat.txt',
-          '-c:v', 'libx264',
-          '-preset', 'veryfast',
-          '-c:a', 'aac',
-          'output.mp4',
-        ]);
+        await execWithTimeout(
+          [
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', 'concat.txt',
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-c:a', 'aac',
+            'output.mp4',
+          ],
+          240000,
+          'Joining clips'
+        );
       }
 
       let outputFile = 'output.mp4';
@@ -908,14 +946,18 @@ export default function VideoEditor() {
             filterComplex += `,drawtext=text='${text.replace(/'/g, "\\'")}':fontfile=Roboto.ttf:fontsize=${fontSize}:fontcolor=${colorHex}:x=${x}:y=${y}:enable='${enable}'`;
           });
 
-          await ffmpeg.exec([
-            '-i', outputFile,
-            '-filter_complex', filterComplex,
-            '-c:v', 'libx264',
-            '-preset', 'veryfast',
-            '-c:a', 'copy',
-            'output_text.mp4'
-          ]);
+          await execWithTimeout(
+            [
+              '-i', outputFile,
+              '-filter_complex', filterComplex,
+              '-c:v', 'libx264',
+              '-preset', 'veryfast',
+              '-c:a', 'copy',
+              'output_text.mp4'
+            ],
+            240000,
+            'Applying text overlays'
+          );
           outputFile = 'output_text.mp4';
         } catch (fontErr) {
           console.error('Failed to apply text overlays:', fontErr);
@@ -958,13 +1000,17 @@ export default function VideoEditor() {
 
       if (format === 'gif') {
         setMessage('Generating high-quality GIF…');
-        await ffmpeg.exec([
-          '-i', outputFile,
-          '-t', `${gifDuration}`,
-          '-vf', `fps=${gifFps},scale=${w}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`,
-          '-loop', '0',
-          'output.gif'
-        ]);
+        await execWithTimeout(
+          [
+            '-i', outputFile,
+            '-t', `${gifDuration}`,
+            '-vf', `fps=${gifFps},scale=${w}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`,
+            '-loop', '0',
+            'output.gif'
+          ],
+          240000,
+          'Generating GIF'
+        );
         finalFile = 'output.gif';
         mimeType = 'image/gif';
       } else if (format !== 'mp4' || resolution !== '1920x1080') {
@@ -972,13 +1018,17 @@ export default function VideoEditor() {
         const formattedOut = `output_final.${format}`;
         const formatCodec = format === 'webm' ? ['-c:v', 'libvpx-vp9', '-c:a', 'libopus'] : ['-c:v', 'libx264', '-c:a', 'aac'];
         
-        await ffmpeg.exec([
-          '-i', outputFile,
-          ...formatCodec,
-          '-preset', 'veryfast',
-          '-b:v', bitrate,
-          formattedOut
-        ]);
+        await execWithTimeout(
+          [
+            '-i', outputFile,
+            ...formatCodec,
+            '-preset', 'veryfast',
+            '-b:v', bitrate,
+            formattedOut
+          ],
+          240000,
+          'Converting format'
+        );
         finalFile = formattedOut;
         mimeType = format === 'webm' ? 'video/webm' : format === 'mov' ? 'video/quicktime' : 'video/mp4';
       }
@@ -1035,14 +1085,18 @@ export default function VideoEditor() {
         const sourceEnd = clip.sourceEnd ?? clip.duration;
         const dur = sourceEnd != null ? sourceEnd - start : null;
 
-        await ffmpeg.exec([
-          '-ss', `${start}`,
-          '-i', inName,
-          ...(dur ? ['-t', `${dur}`] : []),
-          ...(fromAudioTrack ? [] : ['-vn']),
-          '-c:a', 'libmp3lame',
-          segName,
-        ]);
+        await execWithTimeout(
+          [
+            '-ss', `${start}`,
+            '-i', inName,
+            ...(dur ? ['-t', `${dur}`] : []),
+            ...(fromAudioTrack ? [] : ['-vn']),
+            '-c:a', 'libmp3lame',
+            segName,
+          ],
+          240000,
+          `Processing audio ${i + 1}`
+        );
 
         segFiles.push(segName);
       }
@@ -1054,13 +1108,17 @@ export default function VideoEditor() {
 
       setMessage('Merging audio…');
 
-      await ffmpeg.exec([
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', 'concat.txt',
-        '-c', 'copy',
-        'output.mp3',
-      ]);
+      await execWithTimeout(
+        [
+          '-f', 'concat',
+          '-safe', '0',
+          '-i', 'concat.txt',
+          '-c', 'copy',
+          'output.mp3',
+        ],
+        240000,
+        'Merging audio'
+      );
 
       const data = await ffmpeg.readFile('output.mp3');
 
@@ -1077,7 +1135,10 @@ export default function VideoEditor() {
   actionHandlersRef.current = {
     addVideos: () => fileInputRef.current?.click(),
     addAudio: () => audioFileInputRef.current?.click(),
-    preloadFFmpeg: () => load().then(() => setMessage('✅ FFmpeg ready!')),
+    preloadFFmpeg: () =>
+      load()
+        .then(() => setMessage('✅ FFmpeg ready!'))
+        .catch((err) => setMessage(`❌ FFmpeg failed to load: ${err.message}`)),
     saveProject,
     downloadProject,
     importProject: () => projectFileInputRef.current?.click(),
@@ -1638,6 +1699,7 @@ export default function VideoEditor() {
             {activeTab === 'export' && (
               <ExportPresets
                 onExport={exportVideo}
+                onLoadFFmpeg={load}
                 ffmpegLoaded={loaded}
                 exportProgress={exportProgressLocal}
                 isExporting={isExportingLocal}
