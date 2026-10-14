@@ -1334,7 +1334,12 @@ export default function VideoEditor() {
                 </h3>
 
                 {videoClips.length === 0 && (
-                  <p className="muted">No video clips — use Add Videos above.</p>
+                  <div className="empty-state">
+                    <p className="muted">No video clips yet.</p>
+                    <button type="button" onClick={() => fileInputRef.current?.click()}>
+                      📹 Add Videos
+                    </button>
+                  </div>
                 )}
 
                 {videoClips.map((clip) => {
@@ -1472,7 +1477,12 @@ export default function VideoEditor() {
                 </h3>
 
                 {audioClips.length === 0 && (
-                  <p className="muted">No audio clips — use Add Audio above.</p>
+                  <div className="empty-state">
+                    <p className="muted">No audio clips yet.</p>
+                    <button type="button" onClick={() => audioFileInputRef.current?.click()}>
+                      🎵 Add Audio
+                    </button>
+                  </div>
                 )}
 
                 {audioClips.map((clip) => {

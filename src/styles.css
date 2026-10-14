@@ -780,6 +780,8 @@ button.primary:hover:not(:disabled) {
   margin-top: 2px;
 }
 .muted { color: var(--muted); font-size: 0.9rem; }
+.empty-state .muted { margin: 0 0 0.5rem; }
+.empty-state { padding-bottom: 0.75rem; }
 
 /* ── MULTI-LAYER TIMELINE ─────────────────────────────────────── */
 .multi-layer-timeline {
