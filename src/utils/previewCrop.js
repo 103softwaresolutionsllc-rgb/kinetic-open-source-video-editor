@@ -1,3 +1,23 @@
+/**
+ * Normalized UV rect for the WebGL grade renderer: the crop region as
+ * fractions of the source frame, with y measured from the BOTTOM (GL
+ * texture space with UNPACK_FLIP_Y_WEBGL). Pixel crop state is unchanged —
+ * this is only a new application point for it (shader UV transform instead
+ * of CSS geometry), matching the export path where FFmpeg crops first.
+ */
+export function getCropUvRect(crop, videoWidth, videoHeight) {
+  if (!crop?.width || !crop?.height || !videoWidth || !videoHeight) {
+    return { x: 0, y: 0, w: 1, h: 1 };
+  }
+
+  const w = crop.width / videoWidth;
+  const h = crop.height / videoHeight;
+  const x = (crop.x ?? 0) / videoWidth;
+  const yFromTop = (crop.y ?? 0) / videoHeight;
+
+  return { x, y: 1 - yFromTop - h, w, h };
+}
+
 /** CSS styles to preview a pixel-based crop region on a video element */
 export function getCropPreviewStyles(crop, videoWidth, videoHeight) {
   if (!crop?.width || !crop?.height || !videoWidth || !videoHeight) {
