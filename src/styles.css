@@ -603,6 +603,20 @@ button.primary:hover:not(:disabled) {
   max-height: none;
   border-radius: 0;
 }
+/* WebGL grade-preview canvas (Phase 1): replaces the visible <video>;
+   the bitmap letterboxes inside its box exactly like the video did. */
+.editor-preview-gl-canvas {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  background: #000;
+  object-fit: contain;
+  vertical-align: top;
+}
+.preview-crop-frame.has-crop .editor-preview-gl-canvas {
+  max-height: none;
+  object-fit: fill;
+}
 .preview-crop-frame.playing {
   border-color: var(--accent);
   box-shadow: 0 0 30px rgba(191, 0, 255, 0.4);
