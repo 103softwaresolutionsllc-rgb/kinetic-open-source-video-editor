@@ -21,7 +21,7 @@ export const USER_GUIDE_STEPS = [
       'Drag clip edges to trim; drag clips to reorder (video) or reposition (audio).',
       'Use **✂️ Split** at the playhead, or press **S**, to cut a clip in two.',
       'Press **Ctrl+D** to duplicate the selected clip.',
-      'Under **Transitions & Effects**, adjust fades, presets, brightness, and color.',
+      'Under **Transitions**, adjust fades. Presets, brightness, and color live in the **Properties** panel on the right.',
     ],
   },
   {

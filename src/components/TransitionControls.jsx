@@ -1,5 +1,4 @@
 import React from 'react';
-import { EFFECT_PRESETS } from '../utils/videoEffects.js';
 
 function fmt(seconds) {
   if (seconds == null || Number.isNaN(seconds)) {
@@ -21,7 +20,7 @@ export default function TransitionControls({
   if (!selectedClipId || !clip) {
     return (
       <div className="transition-controls empty">
-        <p className="muted">Select a video clip to edit transitions and effects.</p>
+        <p className="muted">Select a video clip to edit transitions.</p>
       </div>
     );
   }
@@ -29,7 +28,7 @@ export default function TransitionControls({
   return (
     <div className="transition-controls">
       <div className="panel-header">
-        <h3>Transitions &amp; Effects</h3>
+        <h3>Transitions</h3>
       </div>
 
       <div className="transition-group">
@@ -94,82 +93,10 @@ export default function TransitionControls({
         </div>
       </div>
 
-      <div className="transition-group">
-        <label htmlFor="effect-preset">Effect Preset</label>
-        <select
-          id="effect-preset"
-          value={clip.effectPreset || 'none'}
-          onChange={(e) =>
-            onEffectChange(selectedClipId, 'effectPreset', e.target.value)
-          }
-        >
-          {EFFECT_PRESETS.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="transition-group">
-        <label>
-          Brightness
-          <span className="time-badge">
-            {(clip.brightness ?? 0).toFixed(2)}
-          </span>
-        </label>
-        <input
-          type="range"
-          min="-0.5"
-          max="0.5"
-          step="0.05"
-          value={clip.brightness ?? 0}
-          onChange={(e) =>
-            onEffectChange(selectedClipId, 'brightness', Number(e.target.value))
-          }
-        />
-      </div>
-
-      <div className="transition-group">
-        <label>
-          Contrast
-          <span className="time-badge">{(clip.contrast ?? 1).toFixed(2)}</span>
-        </label>
-        <input
-          type="range"
-          min="0.5"
-          max="2"
-          step="0.05"
-          value={clip.contrast ?? 1}
-          onChange={(e) =>
-            onEffectChange(selectedClipId, 'contrast', Number(e.target.value))
-          }
-        />
-      </div>
-
-      <div className="transition-group">
-        <label>
-          Saturation
-          <span className="time-badge">
-            {(clip.saturation ?? 1).toFixed(2)}
-          </span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="2"
-          step="0.05"
-          value={clip.saturation ?? 1}
-          onChange={(e) =>
-            onEffectChange(selectedClipId, 'saturation', Number(e.target.value))
-          }
-        />
-      </div>
 
       <div className="transition-note">
         <small>
-          Fades and effects are applied during export via FFmpeg filters. Preset
-          effects show in the live preview.
+          Fades are applied during export via FFmpeg filters.
         </small>
       </div>
     </div>

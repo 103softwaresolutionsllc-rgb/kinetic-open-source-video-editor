@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import WaveSurfer from 'wavesurfer.js';
 import MultiLayerTimeline from './MultiLayerTimeline.jsx';
 import TransitionControls from './TransitionControls.jsx';
+import PropertiesInspector from './PropertiesInspector.jsx';
 import { useFFmpeg } from '../hooks/useFFmpeg.js';
 import { useEditor } from '../contexts/EditorContext.jsx';
 import { useTimeline } from '../contexts/TimelineContext.jsx';
@@ -1692,6 +1693,8 @@ export default function VideoEditor() {
             </p>
           )}
         </div>
+        <PropertiesInspector clip={selectedVideoClip} onEffectChange={handleEffectChange} />
+
         {exportOpen && (
           <aside className="export-panel" aria-label="Export panel">
             <div className="export-panel-header">
