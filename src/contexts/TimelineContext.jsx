@@ -56,6 +56,10 @@ const ActionTypes = {
   UPDATE_LAYER: 'UPDATE_LAYER',
 };
 
+function layerIsLocked(state, layerId) {
+  return Boolean(state.layers.find((l) => l.id === layerId)?.locked);
+}
+
 function packLayerClips(clips) {
   const sorted = [...clips].sort(
     (a, b) => (a.timelineStart ?? 0) - (b.timelineStart ?? 0)
@@ -70,6 +74,7 @@ function packClipsForLayer(layerId, clips) {
 function timelineReducer(state, action) {
   switch (action.type) {
     case ActionTypes.ADD_CLIP: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { layerId, clip } = action.payload;
       return {
         ...state,
@@ -96,6 +101,7 @@ function timelineReducer(state, action) {
     }
 
     case ActionTypes.REMOVE_CLIP: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { layerId, clipId } = action.payload;
       return {
         ...state,
@@ -112,6 +118,7 @@ function timelineReducer(state, action) {
     }
 
     case ActionTypes.UPDATE_CLIP: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { layerId, clipId, updates } = action.payload;
       return {
         ...state,
@@ -129,6 +136,7 @@ function timelineReducer(state, action) {
     }
 
     case ActionTypes.MOVE_CLIP: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { fromLayerId, toLayerId, clipId, newStartTime } = action.payload;
       const fromLayer = state.layers.find((l) => l.id === fromLayerId);
       const clipToMove = fromLayer?.clips.find((c) => c.id === clipId);
@@ -164,6 +172,7 @@ function timelineReducer(state, action) {
     }
 
     case ActionTypes.REORDER_CLIPS: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { layerId, fromIndex, toIndex } = action.payload;
       if (fromIndex === toIndex) return state;
 
@@ -184,6 +193,7 @@ function timelineReducer(state, action) {
     }
 
     case ActionTypes.REPOSITION_CLIP: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { layerId, clipId, timelineStart } = action.payload;
       return {
         ...state,
@@ -271,6 +281,7 @@ function timelineReducer(state, action) {
     }
 
     case ActionTypes.SPLIT_CLIP: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { layerId, clipId, splitTime } = action.payload;
       return {
         ...state,
@@ -317,6 +328,7 @@ function timelineReducer(state, action) {
     }
 
     case ActionTypes.DUPLICATE_CLIP: {
+      if (layerIsLocked(state, action.payload.layerId)) return state;
       const { layerId, clipId } = action.payload;
       return {
         ...state,

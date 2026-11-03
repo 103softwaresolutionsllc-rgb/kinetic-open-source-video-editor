@@ -961,7 +961,7 @@ button.primary:hover:not(:disabled) {
   display: flex;
   gap: 2px;
 }
-.layer-mute-btn, .layer-solo-btn {
+.layer-mute-btn, .layer-solo-btn, .layer-lock-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--muted);
@@ -971,11 +971,11 @@ button.primary:hover:not(:disabled) {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.layer-mute-btn:hover, .layer-solo-btn:hover {
+.layer-mute-btn:hover, .layer-solo-btn:hover, .layer-lock-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
-.layer-mute-btn.active, .layer-solo-btn.active {
+.layer-mute-btn.active, .layer-solo-btn.active, .layer-lock-btn.active {
   border-color: var(--accent);
   background: rgba(191, 0, 255, 0.15);
   color: var(--accent);
@@ -2644,3 +2644,7 @@ body.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
 .video-editor .inspector-group select,
 .video-editor .inspector-group input[type="range"] { width: 100%; }
 .video-editor .inspector-note { color: var(--text-secondary, #94a3b8); }
+
+/* ── R3: locked timeline tracks ────────────────────────────────── */
+.timeline-layer.locked .layer-content { opacity: 0.55; }
+.timeline-layer.locked .timeline-clip { cursor: not-allowed; }
