@@ -2609,3 +2609,38 @@ body.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
   padding: 2px 9px;
   cursor: pointer;
 }
+
+/* ── R2 PROPERTIES INSPECTOR ───────────────────────────────────── */
+.video-editor .properties-inspector {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 20px;
+}
+.video-editor .properties-inspector h3 { font-size: 1rem; margin-bottom: 12px; }
+.video-editor .inspector-clip-name {
+  font-weight: 600;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.video-editor .inspector-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.9rem;
+}
+.video-editor .inspector-group { margin-bottom: 16px; }
+.video-editor .inspector-group label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+}
+.video-editor .inspector-group select,
+.video-editor .inspector-group input[type="range"] { width: 100%; }
+.video-editor .inspector-note { color: var(--text-secondary, #94a3b8); }
