@@ -10,6 +10,7 @@ export default function TimelineLayer({
   onSelectClip,
   onTrimChange,
   onLayerMute,
+  onLayerLock,
   onLayerSolo,
   onLayerRemove,
 }) {
@@ -21,7 +22,7 @@ export default function TimelineLayer({
 
   return (
     <div
-      className={`timeline-layer ${selectedLayer === layer.id ? 'selected' : ''} ${layer.type}`}
+      className={`timeline-layer ${selectedLayer === layer.id ? 'selected' : ''} ${layer.type}${layer.locked ? ' locked' : ''}`}
       data-layer-id={layer.id}
       data-layer-type={layer.type}
     >
@@ -35,8 +36,20 @@ export default function TimelineLayer({
         <div className="layer-controls">
           <button
             type="button"
+            className={`layer-lock-btn ${layer.locked ? 'active' : ''}`}
+            title={layer.locked ? 'Unlock track' : 'Lock track'}
+            aria-label={layer.locked ? 'Unlock track' : 'Lock track'}
+            aria-pressed={Boolean(layer.locked)}
+            onClick={() => onLayerLock?.(layer.id)}
+          >
+            {layer.locked ? '🔒' : '🔓'}
+          </button>
+          <button
+            type="button"
             className={`layer-mute-btn ${layer.muted ? 'active' : ''}`}
             title="Mute/Unmute track"
+            aria-label="Mute/Unmute track"
+            aria-pressed={Boolean(layer.muted)}
             onClick={() => onLayerMute?.(layer.id)}
           >
             {layer.muted ? '🔇' : '🔊'}
@@ -45,6 +58,8 @@ export default function TimelineLayer({
             type="button"
             className={`layer-solo-btn ${layer.solo ? 'active' : ''}`}
             title="Solo track"
+            aria-label="Solo track"
+            aria-pressed={Boolean(layer.solo)}
             onClick={() => onLayerSolo?.(layer.id)}
           >
             S

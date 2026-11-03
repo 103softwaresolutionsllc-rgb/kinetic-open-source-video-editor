@@ -97,6 +97,49 @@ export default function MultiLayerTimeline({
     [layers, updateLayer]
   );
 
+  const handleLayerLock = useCallback(
+    (layerId) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+      updateLayer(layerId, { locked: !layer.locked });
+    },
+    [layers, updateLayer]
+  );
+
+  // Magnetic snap for a freely positioned clip: nearest clip edge or the
+  // playhead within a quarter second wins, for either the start or the end
+  // edge of the dragged clip.
+  const snapStartTime = useCallback(
+    (rawStart, draggedClip) => {
+      const threshold = 0.25;
+      const ownLength = clipTrimmedDuration(draggedClip);
+      let best = rawStart;
+      let bestDist = threshold;
+      const consider = (candidateStart) => {
+        const d = Math.abs(candidateStart - rawStart);
+        if (d < bestDist) {
+          bestDist = d;
+          best = candidateStart;
+        }
+      };
+      consider(currentTime);
+      consider(currentTime - ownLength);
+      for (const layer of layers) {
+        for (const other of layer.clips) {
+          if (other.id === draggedClip.id) continue;
+          const start = other.timelineStart ?? 0;
+          const end = clipTimelineEnd(other);
+          consider(start);
+          consider(end);
+          consider(start - ownLength);
+          consider(end - ownLength);
+        }
+      }
+      return Math.max(0, best);
+    },
+    [layers, currentTime]
+  );
+
   const handleLayerRemove = useCallback(
     (layerId) => {
       removeLayer(layerId);
@@ -212,7 +255,7 @@ export default function MultiLayerTimeline({
         0,
         (clip.timelineStart ?? 0) + delta.x / pixelsPerSecond
       );
-      repositionClip(fromLayerId, clipId, newStart);
+      repositionClip(fromLayerId, clipId, snapStartTime(newStart, clip));
     }
 
     if (over && active.id !== over.id) {
@@ -368,6 +411,7 @@ export default function MultiLayerTimeline({
                 onSelectClip={handleClipSelect}
                 onTrimChange={handleTrimChange}
                 onLayerMute={handleLayerMute}
+                onLayerLock={handleLayerLock}
                 onLayerSolo={handleLayerSolo}
                 onLayerRemove={handleLayerRemove}
               />
