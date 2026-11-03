@@ -2553,3 +2553,59 @@ body.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
   .settings-grid { grid-template-columns: 1fr; }
   .header-actions { gap: 8px; }
 }
+/* ── R1 SHELL: toolbar, left bin, export panel ─────────────────── */
+.video-editor .editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.video-editor .editor-toolbar-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #94a3b8);
+}
+.video-editor .toolbar-export-btn {
+  background: var(--accent, #00FFD1);
+  color: #06251f;
+  border: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 8px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.video-editor .toolbar-export-btn[aria-pressed="true"] {
+  outline: 2px solid var(--accent, #00FFD1);
+  outline-offset: 2px;
+  filter: brightness(1.1);
+}
+.video-editor .bin-panel {
+  border-right: 1px solid var(--border);
+  padding-right: 20px;
+}
+.video-editor .export-panel {
+  width: 340px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 20px;
+}
+.video-editor .export-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.video-editor .export-panel-header h3 { font-size: 1rem; }
+.video-editor .export-panel-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary, #94a3b8);
+  border-radius: 4px;
+  padding: 2px 9px;
+  cursor: pointer;
+}
