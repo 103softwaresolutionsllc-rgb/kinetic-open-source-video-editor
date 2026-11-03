@@ -74,6 +74,7 @@ export default function VideoEditor() {
   const [previewClipId, setPreviewClipId] = useState(null);
   const [message, setMessage] = useState('Ready. Add a video to get started.');
   const [activeTab, setActiveTab] = useState('clips');
+  const [exportOpen, setExportOpen] = useState(false);
   const [textOverlays, setTextOverlays] = useState([]);
   const [cropClip, setCropClip] = useState(null);
   const [cropImage, setCropImage] = useState(null);
@@ -1231,88 +1232,24 @@ export default function VideoEditor() {
         </div>
       )}
 
+      <div className="editor-toolbar">
+        <span className="editor-toolbar-title">Editor</span>
+        <button
+          type="button"
+          className="toolbar-export-btn"
+          onClick={() => setExportOpen((v) => !v)}
+          aria-pressed={exportOpen}
+        >
+          📤 Export
+        </button>
+      </div>
+
       <div className="editor-body">
-        <div className="preview-column">
-          <PreviewCompositor
-            videoRef={videoRef}
-            videoClip={previewVideoClip}
-            textOverlays={textOverlays}
-            brandSettings={brandSettings}
-            currentTime={currentTime}
-            isPlaying={isPlaying && !previewIsAudio}
-            isAudioPreview={previewIsAudio}
-          >
-            <div className="playback-controls">
-              <button
-                type="button"
-                onClick={() => handlePlayToggle(!isPlaying)}
-                title={isPlaying ? 'Pause' : 'Play sequence'}
-              >
-                {isPlaying ? '⏸' : '▶'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  stopSequence();
-                  setCurrentTime(0);
-                  const first = videoClips[0] ?? audioClips[0];
-                  if (first) {
-                    const layer = videoClips[0] ? VIDEO_LAYER_ID : AUDIO_LAYER_ID;
-                    previewClip(first, first.id, layer);
-                  }
-                }}
-                title="Stop and rewind"
-              >
-                ⏹
-              </button>
-            </div>
-          </PreviewCompositor>
-
-          <div
-            id="waveform"
-            style={{
-              width: '100%',
-              marginTop: 12,
-              borderRadius: 6,
-              overflow: 'hidden',
-            }}
-          />
-
-          <div className="waveform-controls">
-            <button onClick={() => wavesurferRef.current?.play()}>
-              ▶ Play
-            </button>
-
-            <button onClick={() => wavesurferRef.current?.pause()}>
-              ⏸ Pause
-            </button>
-
-            <label>Zoom:</label>
-
-            <input
-              type="range"
-              min="0"
-              max="200"
-              defaultValue="0"
-              onChange={(e) =>
-                wavesurferRef.current?.zoom(Number(e.target.value))
-              }
-            />
-          </div>
-
-          {hasContent && (
-            <p className="hint">
-              💡 Click timeline clips to preview. Audio plays in the waveform.
-            </p>
-          )}
-        </div>
-
-        <aside className="clips-sidebar">
+        <aside className="clips-sidebar bin-panel" aria-label="Media bin">
           <div className="sidebar-tabs" style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
             <button
               className={`sidebar-tab ${activeTab === 'clips' ? 'active' : ''}`}
-              onClick={() => setActiveTab('clips')}
+              onClick={() => { setActiveTab('clips'); setExportOpen(false); }}
               style={{
                 flex: 1,
                 background: activeTab === 'clips' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
@@ -1330,7 +1267,7 @@ export default function VideoEditor() {
             </button>
             <button
               className={`sidebar-tab ${activeTab === 'text' ? 'active' : ''}`}
-              onClick={() => setActiveTab('text')}
+              onClick={() => { setActiveTab('text'); setExportOpen(false); }}
               style={{
                 flex: 1,
                 background: activeTab === 'text' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
@@ -1348,7 +1285,7 @@ export default function VideoEditor() {
             </button>
             <button
               className={`sidebar-tab ${activeTab === 'audio' ? 'active' : ''}`}
-              onClick={() => setActiveTab('audio')}
+              onClick={() => { setActiveTab('audio'); setExportOpen(false); }}
               style={{
                 flex: 1,
                 background: activeTab === 'audio' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
@@ -1363,24 +1300,6 @@ export default function VideoEditor() {
               }}
             >
               🎚️ Mixer
-            </button>
-            <button
-              className={`sidebar-tab ${activeTab === 'export' ? 'active' : ''}`}
-              onClick={() => setActiveTab('export')}
-              style={{
-                flex: 1,
-                background: activeTab === 'export' ? 'rgba(191, 0, 255, 0.15)' : 'transparent',
-                border: '1px solid',
-                borderColor: activeTab === 'export' ? 'var(--accent, #00FFD1)' : 'transparent',
-                padding: '8px 4px',
-                fontSize: '0.85rem',
-                color: activeTab === 'export' ? 'var(--accent, #00FFD1)' : 'var(--text-secondary, #94a3b8)',
-                cursor: 'pointer',
-                borderRadius: '4px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              📤 Export
             </button>
           </div>
 
@@ -1696,17 +1615,105 @@ export default function VideoEditor() {
               />
             )}
 
-            {activeTab === 'export' && (
-              <ExportPresets
-                onExport={exportVideo}
-                onLoadFFmpeg={load}
-                ffmpegLoaded={loaded}
-                exportProgress={exportProgressLocal}
-                isExporting={isExportingLocal}
-              />
-            )}
           </div>
         </aside>
+        <div className="preview-column">
+          <PreviewCompositor
+            videoRef={videoRef}
+            videoClip={previewVideoClip}
+            textOverlays={textOverlays}
+            brandSettings={brandSettings}
+            currentTime={currentTime}
+            isPlaying={isPlaying && !previewIsAudio}
+            isAudioPreview={previewIsAudio}
+          >
+            <div className="playback-controls">
+              <button
+                type="button"
+                onClick={() => handlePlayToggle(!isPlaying)}
+                title={isPlaying ? 'Pause' : 'Play sequence'}
+              >
+                {isPlaying ? '⏸' : '▶'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  stopSequence();
+                  setCurrentTime(0);
+                  const first = videoClips[0] ?? audioClips[0];
+                  if (first) {
+                    const layer = videoClips[0] ? VIDEO_LAYER_ID : AUDIO_LAYER_ID;
+                    previewClip(first, first.id, layer);
+                  }
+                }}
+                title="Stop and rewind"
+              >
+                ⏹
+              </button>
+            </div>
+          </PreviewCompositor>
+
+          <div
+            id="waveform"
+            style={{
+              width: '100%',
+              marginTop: 12,
+              borderRadius: 6,
+              overflow: 'hidden',
+            }}
+          />
+
+          <div className="waveform-controls">
+            <button onClick={() => wavesurferRef.current?.play()}>
+              ▶ Play
+            </button>
+
+            <button onClick={() => wavesurferRef.current?.pause()}>
+              ⏸ Pause
+            </button>
+
+            <label>Zoom:</label>
+
+            <input
+              type="range"
+              min="0"
+              max="200"
+              defaultValue="0"
+              onChange={(e) =>
+                wavesurferRef.current?.zoom(Number(e.target.value))
+              }
+            />
+          </div>
+
+          {hasContent && (
+            <p className="hint">
+              💡 Click timeline clips to preview. Audio plays in the waveform.
+            </p>
+          )}
+        </div>
+        {exportOpen && (
+          <aside className="export-panel" aria-label="Export panel">
+            <div className="export-panel-header">
+              <h3>Export</h3>
+              <button
+                type="button"
+                className="export-panel-close"
+                onClick={() => setExportOpen(false)}
+                aria-label="Close export panel"
+              >
+                ✕
+              </button>
+            </div>
+            <ExportPresets
+              onExport={exportVideo}
+              onLoadFFmpeg={load}
+              ffmpegLoaded={loaded}
+              exportProgress={exportProgressLocal}
+              isExporting={isExportingLocal}
+            />
+          </aside>
+        )}
       </div>
 
       <MultiLayerTimeline
