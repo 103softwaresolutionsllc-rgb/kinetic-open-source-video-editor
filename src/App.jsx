@@ -217,7 +217,7 @@ function AppShell() {
             />
             <div>
               <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>Kinetic</span>
-              <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '-2px' }}>
+              <div className="header-subtitle" style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '-2px' }}>
                 Professional Video Editor
               </div>
             </div>
