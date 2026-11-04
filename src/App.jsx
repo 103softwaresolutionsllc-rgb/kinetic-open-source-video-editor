@@ -265,25 +265,6 @@ function AppShell() {
               )}
             </HeaderMenu>
 
-            <HeaderMenu
-              id="export-menu"
-              label="📤 Export"
-              variant="primary"
-              open={openMenu === 'export'}
-              onOpenChange={(next) => setOpenMenu(next ? 'export' : null)}
-            >
-              {(close) => (
-                <>
-                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.exportVideo?.(); close(); }}>
-                    🎬 Export as MP4
-                  </button>
-                  <button type="button" role="menuitem" className="header-menu-item" onClick={() => { actions?.exportAudio?.(); close(); }}>
-                    🎵 Export as MP3
-                  </button>
-                </>
-              )}
-            </HeaderMenu>
-
             <SettingsWheel
               currentTheme={theme}
               onThemeChange={handleThemeChange}

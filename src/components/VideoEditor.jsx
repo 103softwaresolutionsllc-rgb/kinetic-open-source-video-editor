@@ -1710,6 +1710,7 @@ export default function VideoEditor() {
             </div>
             <ExportPresets
               onExport={exportVideo}
+              onExportAudio={exportAudio}
               onLoadFFmpeg={load}
               ffmpegLoaded={loaded}
               exportProgress={exportProgressLocal}

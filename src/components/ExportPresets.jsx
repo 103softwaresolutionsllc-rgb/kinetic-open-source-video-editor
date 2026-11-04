@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 
 const ExportPresets = ({
 onExport,
+onExportAudio, // Audio-only MP3 export; the panel is the single export entry point
 onLoadFFmpeg, // Loads FFmpeg on demand so this tab is never a dead end
 ffmpegLoaded = false,
 exportProgress = 0, // Real progress from useFFmpeg hook
@@ -10,6 +11,7 @@ onExportStart // Optional callback when export begins
 }) => {
 const [selectedPreset, setSelectedPreset] = useState('youtube');
 const [starting, setStarting] = useState(false);
+const [startingAudio, setStartingAudio] = useState(false);
 const [customSettings, setCustomSettings] = useState({
 resolution: '1920x1080',
 bitrate: '5M',
@@ -98,6 +100,21 @@ alert('Export failed: ' + error.message);
 setStarting(false);
 }
 }, [selectedPreset, customSettings, presets, ffmpegLoaded, onLoadFFmpeg, onExport, onExportStart]);
+
+const handleExportAudio = useCallback(async () => {
+if (!onExportAudio) return;
+setStartingAudio(true);
+try {
+// exportAudio loads FFmpeg itself and reports progress via the editor
+// message line; mirror handleExport's failure surfacing here.
+await onExportAudio();
+} catch (error) {
+console.error('Audio export failed:', error);
+alert('Audio export failed: ' + error.message);
+} finally {
+setStartingAudio(false);
+}
+}, [onExportAudio]);
 
 const handleCustomSettingChange = (key, value) => {
 setCustomSettings(prev => ({ ...prev, [key]: value }));
@@ -203,6 +220,16 @@ className={`export-button ${isExporting ? 'exporting' : ''}`}
 : `Export as ${currentSettings.format.toUpperCase()}`
 }
 </button>
+
+{onExportAudio && (
+<button
+onClick={handleExportAudio}
+disabled={isExporting || starting || startingAudio}
+className="export-button export-button-secondary"
+>
+{startingAudio ? 'Exporting audio…' : '🎵 Export as MP3'}
+</button>
+)}
 
 {isExporting && (
 <div className="export-progress">
