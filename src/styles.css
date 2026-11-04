@@ -2653,3 +2653,56 @@ body.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
 /* ── R3: locked timeline tracks ────────────────────────────────── */
 .timeline-layer.locked .layer-content { opacity: 0.55; }
 .timeline-layer.locked .timeline-clip { cursor: not-allowed; }
+
+/* ── MOBILE WEB (phase 1): stacked editor, bottom-sheet export ──
+   The editor was desktop-shaped (340px bin + 300px inspector +
+   340px export panel in one row), which crushed the preview on
+   phones. Under 900px the body stacks with the preview first,
+   panels go full-width below it, and the export panel becomes a
+   bottom sheet. Touch targets grow on coarse pointers only, so
+   desktop is untouched. */
+@media (max-width: 900px) {
+  .video-editor .editor-body { flex-direction: column; }
+  .video-editor .preview-column { order: -1; width: 100%; }
+  .video-editor .editor-preview { max-height: 46vh; }
+  .video-editor .clips-sidebar {
+    width: 100%;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 12px 0 0;
+  }
+  .video-editor .properties-inspector {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding: 12px 0 0;
+  }
+  .waveform-controls { flex-wrap: wrap; }
+  .waveform-controls input[type="range"] { flex: 1 1 120px; min-width: 0; }
+  .video-editor .export-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: auto;
+    max-height: 80vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    z-index: 80;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.45);
+  }
+}
+@media (max-width: 640px) {
+  .header-subtitle { display: none; }
+  .session-privacy-banner { font-size: 0.78rem; padding: 6px 10px; }
+}
+@media (pointer: coarse) {
+  .header-menu > button { min-height: 44px; }
+  .video-editor .toolbar-export-btn { min-height: 44px; padding: 10px 20px; }
+  .layer-header button { min-width: 36px; min-height: 36px; }
+  .export-panel-close { min-width: 44px; min-height: 44px; }
+}
