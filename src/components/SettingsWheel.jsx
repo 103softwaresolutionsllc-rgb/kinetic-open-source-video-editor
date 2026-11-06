@@ -221,7 +221,7 @@ export default function SettingsWheel({
 
           <div className="settings-footer">
             <div className="app-info">
-              <strong>Kinetic v1.0.0</strong>
+              <strong>Kinetic v1.11.0</strong>
               <div className="app-status">High-Performance Video Editor</div>
             </div>
           </div>
