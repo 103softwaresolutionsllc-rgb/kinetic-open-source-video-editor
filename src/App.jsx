@@ -126,7 +126,14 @@ function AppShell() {
               <button
                 className="primary"
                 onClick={startEditing}
-                style={{ fontSize: '1.1rem', padding: '12px 24px' }}
+                style={{
+                  height: '46px',
+                  padding: '0 24px',
+                  fontSize: '1.05rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
               >
                 ⚡ Start Editing
               </button>
@@ -135,7 +142,18 @@ function AppShell() {
                 className="secondary"
                 onClick={() => handleThemeChange(theme === 'dark' ? 'light' : 'dark')}
                 title="Toggle theme"
-                style={{ fontSize: '1.1rem', padding: '8px 12px' }}
+                aria-label="Toggle theme"
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  padding: 0,
+                  fontSize: '1.15rem',
+                  lineHeight: 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
               >
                 {theme === 'dark' ? '☀️' : '🌙'}
               </button>
