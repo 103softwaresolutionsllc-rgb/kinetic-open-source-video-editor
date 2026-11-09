@@ -115,25 +115,17 @@ function AppShell() {
                 style={{ height: '48px', width: '48px', objectFit: 'contain' }}
               />
               <div>
-                <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>Kinetic</span>
-                <div style={{ fontSize: '0.9rem', color: 'var(--muted)', marginTop: '-2px' }}>
+                <span className="brand-title" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Kinetic</span>
+                <div className="header-subtitle" style={{ fontSize: '0.9rem', color: 'var(--muted)', marginTop: '-2px' }}>
                   Professional Video Editor
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
                 className="primary"
                 onClick={startEditing}
-                style={{
-                  height: '46px',
-                  padding: '0 24px',
-                  fontSize: '1.05rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
               >
                 ⚡ Start Editing
               </button>
@@ -143,17 +135,6 @@ function AppShell() {
                 onClick={() => handleThemeChange(theme === 'dark' ? 'light' : 'dark')}
                 title="Toggle theme"
                 aria-label="Toggle theme"
-                style={{
-                  width: '46px',
-                  height: '46px',
-                  padding: 0,
-                  fontSize: '1.15rem',
-                  lineHeight: 1,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
               >
                 {theme === 'dark' ? '☀️' : '🌙'}
               </button>
