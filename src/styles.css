@@ -130,6 +130,32 @@ body {
   color: var(--text);
 }
 
+/* Landing header action pair: Start CTA + theme toggle share one height.
+   Sizing lives here (not inline) so the mobile breakpoint can shrink the
+   pair instead of crushing it — a fixed height + wrapping label + the
+   base button's overflow:hidden clipped "EDITING" on phones. */
+.landing-page .header button.primary {
+  height: 46px;
+  padding: 0 24px;
+  font-size: 1.05rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.landing-page .header button.secondary {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* Logo glow effect */
 .header img {
   filter: drop-shadow(0 0 10px rgba(191, 0, 255, 0.6));
@@ -2699,6 +2725,14 @@ body.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
 @media (max-width: 640px) {
   .header-subtitle { display: none; }
   .session-privacy-banner { font-size: 0.78rem; padding: 6px 10px; }
+  /* Landing header on phones: smaller brand + compact pair, and the row
+     may wrap rather than squeeze the Start label into clipping. */
+  .landing-page .header { padding: 12px 14px; flex-wrap: wrap; row-gap: 8px; }
+  .landing-page .header img { height: 40px !important; width: 40px !important; }
+  .landing-page .header .brand-title { font-size: 1.25rem !important; }
+  .landing-page .header .header-actions { margin-left: auto; }
+  .landing-page .header button.primary { height: 42px; padding: 0 14px; font-size: 0.92rem; }
+  .landing-page .header button.secondary { width: 42px; height: 42px; font-size: 1.05rem; }
 }
 @media (pointer: coarse) {
   .header-menu > button { min-height: 44px; }
